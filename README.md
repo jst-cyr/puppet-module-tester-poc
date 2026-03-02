@@ -140,6 +140,7 @@ Recommended defaults for this POC:
 - Do not commit tokens to the repo.
 - Do not print secrets in logs; mask values in workflow output.
 - Keep Puppet target versions aligned with maintained releases from Puppet lifecycle guidance on help.puppet.com.
+- The runner exits with a non-zero status when any module result is `harness_error`, so CI correctly fails (red) on harness/auth/bootstrap issues.
 
 ## Next step
 

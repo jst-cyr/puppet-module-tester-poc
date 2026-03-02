@@ -59,6 +59,8 @@ module ModuleTester
       end
 
       write_reports(results)
+      return 1 if results.any? { |result| result[:compatibility_state] == 'harness_error' }
+
       0
     rescue StandardError => e
       warn "Runner failed: #{e.message}"
