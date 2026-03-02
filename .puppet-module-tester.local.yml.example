@@ -1,5 +1,5 @@
 puppet_core_api_key: "replace-with-your-api-key"
-puppet_core_source_url: "https://replace-with-your-puppet-core-source"
+puppet_core_source_url: "https://rubygems-puppetcore.puppet.com"
 puppet_core_auth_header: "X-Api-Key"
 puppet_compat_metadata_mode: "warn"
 puppet_compat_target: "8-latest-maintained"
