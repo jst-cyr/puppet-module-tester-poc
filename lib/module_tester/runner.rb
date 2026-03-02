@@ -434,7 +434,22 @@ module ModuleTester
     end
 
     def resolve_state(result)
-      return 'inconclusive' if result[:auth_status] != 'ok'
+      return 'harness_error' if result[:auth_status] != 'ok'
+
+      harness_stage_failures = result[:stages].any? do |stage|
+        next false if stage.status == 'passed'
+
+        %w[
+          clone
+          bundle_config_path
+          bundle_config_multisource
+          bundle_config_source
+          bootstrap
+          rake_tasks
+          pdk_version
+        ].include?(stage.name)
+      end
+      return 'harness_error' if harness_stage_failures
 
       failing_stage = result[:stages].any? { |stage| stage.name != 'bootstrap' && stage.status != 'passed' }
       return 'not_compatible' if failing_stage
