@@ -102,10 +102,20 @@ Use these env vars in your GitHub Actions workflow jobs:
 - `PUPPET_CORE_AUTH_HEADER` (optional)
 - `PUPPET_COMPAT_METADATA_MODE` (recommended): set to `warn` for phase 1
 
+Strict enforcement flags (all optional, default shown):
+
+- `PUPPET_ENFORCE_PRIVATE_SOURCE=true`
+- `PUPPET_ENFORCE_NO_OPENVOX=true`
+- `PUPPET_ENFORCE_EXACT_PUPPET_VERSION=true`
+- `PUPPET_REQUIRED_PDK_VERSION` (unset by default; set to a prefix like `3.6` to require and verify PDK version)
+
 Recommended defaults for this POC:
 
 - `PUPPET_COMPAT_METADATA_MODE=warn`
 - `PUPPET_COMPAT_TARGET=8-latest-maintained`
+- `PUPPET_ENFORCE_PRIVATE_SOURCE=true`
+- `PUPPET_ENFORCE_NO_OPENVOX=true`
+- `PUPPET_ENFORCE_EXACT_PUPPET_VERSION=true`
 
 ## Policy decisions currently in effect
 

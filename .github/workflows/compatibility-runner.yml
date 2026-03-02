@@ -46,9 +46,11 @@ jobs:
 
     env:
       PUPPET_CORE_API_KEY: ${{ secrets.PUPPET_CORE_API_KEY }}
-      PUPPET_CORE_SOURCE_URL: ${{ secrets.PUPPET_CORE_SOURCE_URL }}
-      PUPPET_CORE_AUTH_HEADER: ${{ secrets.PUPPET_CORE_AUTH_HEADER }}
+      PUPPET_CORE_SOURCE_URL: https://rubygems-puppetcore.puppet.com
       PUPPET_COMPAT_METADATA_MODE: ${{ github.event.inputs.metadata_mode || 'warn' }}
+      PUPPET_ENFORCE_PRIVATE_SOURCE: "true"
+      PUPPET_ENFORCE_NO_OPENVOX: "true"
+      PUPPET_ENFORCE_EXACT_PUPPET_VERSION: "true"
 
     steps:
       - name: Checkout

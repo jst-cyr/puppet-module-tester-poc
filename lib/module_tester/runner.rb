@@ -10,6 +10,8 @@ require 'shellwords'
 require 'rexml/document'
 
 module ModuleTester
+  DEFAULT_PUPPET_CORE_SOURCE_URL = 'https://rubygems-puppetcore.puppet.com'
+
   StageResult = Struct.new(:name, :status, :command, :exit_code, :duration_seconds, :output, keyword_init: true)
 
   ModuleResult = Struct.new(
@@ -123,9 +125,23 @@ module ModuleTester
         env['BUNDLE_RUBYGEMS__PUPPETCORE__PUPPET__COM'] = "forge-key:#{ENV.fetch('PUPPET_CORE_API_KEY', '')}"
       end
 
-      run_bootstrap_if_needed(module_dir, env, result)
-      run_adapters(module_dir, env, profile, result)
+      pre_stage_count = result[:stages].length
+      run_bootstrap_if_needed(module_dir, env, result, profile)
+      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
 
+      pre_stage_count = result[:stages].length
+      enforce_runtime_guardrails(module_dir, env, result, profile)
+      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
+
+      pre_stage_count = result[:stages].length
+      run_adapters(module_dir, env, profile, result)
+      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
+
+      result[:compatibility_state] = resolve_state(result)
+      result
+    end
+
+    def finish_early(result)
       result[:compatibility_state] = resolve_state(result)
       result
     end
@@ -256,10 +272,95 @@ module ModuleTester
       end
     end
 
-    def run_bootstrap_if_needed(module_dir, env, result)
+    def run_bootstrap_if_needed(module_dir, env, result, profile)
       return unless File.exist?(File.join(module_dir, 'Gemfile')) && command_available?('bundle')
 
-      result[:stages] << run_stage('bootstrap', ['bundle', 'install', '--path', 'vendor/bundle'], module_dir, env)
+      result[:stages] << run_stage('bundle_config_path', ['bundle', 'config', 'set', '--local', 'path', 'vendor/bundle'], module_dir, env)
+      result[:stages] << run_stage('bundle_config_multisource', ['bundle', 'config', 'set', '--local', 'disable_multisource', 'true'], module_dir, env)
+
+      if profile.fetch('gem_source_mode') == 'private'
+        source_url = ENV.fetch('PUPPET_CORE_SOURCE_URL', DEFAULT_PUPPET_CORE_SOURCE_URL).strip
+        result[:stages] << run_stage('bundle_config_source', ['bundle', 'config', 'set', '--local', 'mirror.https://rubygems.org', source_url], module_dir, env)
+      end
+
+      result[:stages] << run_stage('bootstrap', ['bundle', 'install'], module_dir, env)
+    end
+
+    def enforce_runtime_guardrails(module_dir, env, result, profile)
+      if profile.fetch('gem_source_mode') == 'private' && enforce_private_source?
+        bootstrap_stage = result[:stages].find { |stage| stage.name == 'bootstrap' }
+        bootstrap_output = bootstrap_stage&.output.to_s
+        if bootstrap_output.include?('https://rubygems.org')
+          result[:stages] << failed_stage('enforce_private_source', 'Detected rubygems.org usage during bootstrap while private source is required')
+        end
+      end
+
+      if enforce_no_openvox?
+        result[:stages] << run_stage(
+          'enforce_no_openvox',
+          ['bundle', 'exec', 'ruby', '-e', "abort('openvox gem detected') if Gem::Specification.find_all_by_name('openvox').any?; puts 'openvox not detected'"] ,
+          module_dir,
+          env
+        )
+      end
+
+      if enforce_exact_puppet_version?
+        result[:stages] << run_stage(
+          'enforce_puppet_version',
+          [
+            'bundle',
+            'exec',
+            'ruby',
+            '-e',
+            "spec=Gem::Specification.find_all_by_name('puppet').max_by(&:version); abort('puppet gem not installed') unless spec; expected=ENV.fetch('PUPPET_GEM_VERSION'); abort(\"puppet #{spec.version} != #{expected}\") unless spec.version.to_s == expected; puts \"puppet #{spec.version}\""
+          ],
+          module_dir,
+          env
+        )
+      end
+
+      required_pdk = ENV.fetch('PUPPET_REQUIRED_PDK_VERSION', '').strip
+      return if required_pdk.empty?
+
+      unless command_available?('pdk')
+        result[:stages] << failed_stage('enforce_pdk_version', "PDK is required but not installed (required: #{required_pdk})")
+        return
+      end
+
+      pdk_stage = run_stage('pdk_version', ['pdk', '--version'], module_dir, env)
+      result[:stages] << pdk_stage
+      return if pdk_stage.status != 'passed'
+
+      unless pdk_stage.output.to_s.match?(/\b#{Regexp.escape(required_pdk)}(\.|\b)/)
+        result[:stages] << failed_stage('enforce_pdk_version', "PDK version mismatch: required #{required_pdk}, got #{pdk_stage.output.to_s.strip}")
+      end
+    end
+
+    def enforce_private_source?
+      ENV.fetch('PUPPET_ENFORCE_PRIVATE_SOURCE', 'true') == 'true'
+    end
+
+    def enforce_no_openvox?
+      ENV.fetch('PUPPET_ENFORCE_NO_OPENVOX', 'true') == 'true'
+    end
+
+    def enforce_exact_puppet_version?
+      ENV.fetch('PUPPET_ENFORCE_EXACT_PUPPET_VERSION', 'true') == 'true'
+    end
+
+    def failed_stage(name, message)
+      StageResult.new(
+        name: name,
+        status: 'failed',
+        command: nil,
+        exit_code: 1,
+        duration_seconds: 0,
+        output: message
+      )
+    end
+
+    def stages_failed_since?(result, count)
+      result[:stages][count..].to_a.any? { |stage| stage.status != 'passed' }
     end
 
     def run_adapters(module_dir, env, profile, result)
