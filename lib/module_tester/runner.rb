@@ -298,13 +298,14 @@ module ModuleTester
         if split_source_mode?
           overlay_gemfile = write_split_gemfile(module_dir, profile, source_url)
           env['BUNDLE_GEMFILE'] = overlay_gemfile
+          display_gemfile = File.basename(overlay_gemfile)
           result[:stages] << StageResult.new(
             name: 'bundle_config_split_gemfile',
             status: 'passed',
             command: nil,
             exit_code: 0,
             duration_seconds: 0,
-            output: "Using split-source Gemfile: #{overlay_gemfile}"
+            output: "Using split-source Gemfile: #{display_gemfile}"
           )
         else
           result[:stages] << run_stage('bundle_config_source_mirror', ['bundle', 'config', 'set', '--local', 'mirror.https://rubygems.org', source_url], module_dir, env)
@@ -397,7 +398,7 @@ module ModuleTester
     end
 
     def write_split_gemfile(module_dir, profile, source_url)
-      overlay_gemfile = File.join(module_dir, 'Gemfile.puppetcore')
+      overlay_gemfile = File.expand_path('Gemfile.puppetcore', module_dir)
       puppet_version = profile.fetch('puppet_core_version').to_s
       facter_version = profile.fetch('facter_version', '').to_s
 
