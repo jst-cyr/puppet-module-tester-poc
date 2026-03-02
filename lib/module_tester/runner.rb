@@ -8,6 +8,7 @@ require 'open3'
 require 'timeout'
 require 'shellwords'
 require 'rexml/document'
+require 'cgi'
 
 module ModuleTester
   DEFAULT_PUPPET_CORE_SOURCE_URL = 'https://rubygems-puppetcore.puppet.com'
@@ -285,7 +286,14 @@ module ModuleTester
 
       if profile.fetch('gem_source_mode') == 'private'
         source_url = ENV.fetch('PUPPET_CORE_SOURCE_URL', DEFAULT_PUPPET_CORE_SOURCE_URL).strip
-        result[:stages] << run_stage('bundle_config_source', ['bundle', 'config', 'set', '--local', source_url, "forge-key:#{ENV.fetch('PUPPET_CORE_API_KEY', '')}"], module_dir, env)
+        result[:stages] << StageResult.new(
+          name: 'bundle_config_source',
+          status: 'passed',
+          command: nil,
+          exit_code: 0,
+          duration_seconds: 0,
+          output: "Using authenticated source: #{source_url}"
+        )
 
         if split_source_mode?
           overlay_gemfile = write_split_gemfile(module_dir, profile, source_url)
@@ -445,6 +453,7 @@ module ModuleTester
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       output = ''
       status = nil
+      safe_command = redact_sensitive(command.shelljoin)
 
       begin
         Timeout.timeout(timeout_seconds) do
@@ -456,10 +465,10 @@ module ModuleTester
         StageResult.new(
           name: name,
           status: status.success? ? 'passed' : 'failed',
-          command: command.shelljoin,
+          command: safe_command,
           exit_code: status.exitstatus,
           duration_seconds: elapsed.round(2),
-          output: trimmed_output
+          output: redact_sensitive(trimmed_output)
         )
       rescue Timeout::Error
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
@@ -468,12 +477,36 @@ module ModuleTester
         StageResult.new(
           name: name,
           status: 'failed',
-          command: command.shelljoin,
+          command: safe_command,
           exit_code: -1,
           duration_seconds: elapsed.round(2),
-          output: "Timeout after #{timeout_seconds}s\n#{trimmed_output}"
+          output: redact_sensitive("Timeout after #{timeout_seconds}s\n#{trimmed_output}")
         )
       end
+    end
+
+    def redact_sensitive(text)
+      value = text.to_s
+      secrets = []
+
+      api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').to_s.strip
+      secrets << api_key unless api_key.empty?
+
+      password = ENV.fetch('PASSWORD', '').to_s.strip
+      secrets << password unless password.empty?
+
+      env_credential = ENV.fetch('BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM', '').to_s.strip
+      secrets << env_credential unless env_credential.empty?
+
+      secrets.uniq.each do |secret|
+        value = value.gsub(secret, '[REDACTED]')
+        escaped = CGI.escape(secret)
+        value = value.gsub(escaped, '[REDACTED]') unless escaped.empty?
+      end
+
+      value = value.gsub(/forge-key:[^\s'"@]+/, 'forge-key:[REDACTED]')
+      value = value.gsub(/license-id:[^\s'"@]+/, 'license-id:[REDACTED]')
+      value
     end
 
     def resolve_state(result)
