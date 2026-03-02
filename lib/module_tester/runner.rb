@@ -121,8 +121,11 @@ module ModuleTester
         'PUPPET_COMPAT_METADATA_MODE' => @options[:metadata_mode].to_s
       )
 
-      if ENV.fetch('PUPPET_CORE_API_KEY', '').strip != ''
-        env['BUNDLE_RUBYGEMS__PUPPETCORE__PUPPET__COM'] = "forge-key:#{ENV.fetch('PUPPET_CORE_API_KEY', '')}"
+      puppet_core_api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').strip
+      if puppet_core_api_key != ''
+        env['USERNAME'] = 'forge-key'
+        env['PASSWORD'] = puppet_core_api_key
+        env['BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM'] = "forge-key:#{puppet_core_api_key}"
       end
 
       pre_stage_count = result[:stages].length

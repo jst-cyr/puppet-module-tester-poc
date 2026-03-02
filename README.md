@@ -73,6 +73,15 @@ No additional secret is required for source URL by default. The runner/workflow 
 
 - `PUPPET_CORE_SOURCE_URL=https://rubygems-puppetcore.puppet.com`
 
+Authentication model (from Puppet gem installation guidance):
+
+- Username: `forge-key`
+- Password: your Forge API key
+
+The runner sets Bundler credentials using:
+
+- `BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM=forge-key:<PUPPET_CORE_API_KEY>`
+
 ## GitHub Actions usage
 
 Workflow file: `.github/workflows/compatibility-runner.yml`
@@ -94,6 +103,16 @@ Use these env vars in your GitHub Actions workflow jobs:
 - `PUPPET_CORE_API_KEY` (required)
 - `PUPPET_CORE_SOURCE_URL` (optional override; defaults to `https://rubygems-puppetcore.puppet.com`)
 - `PUPPET_COMPAT_METADATA_MODE` (recommended): set to `warn` for phase 1
+
+Optional manual debug variables (normally not required because runner sets them):
+
+- `USERNAME=forge-key`
+- `PASSWORD=<PUPPET_CORE_API_KEY>`
+- `BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM=forge-key:<PUPPET_CORE_API_KEY>`
+
+If testing auth manually outside the runner, Puppet docs recommend Bundler config like:
+
+- `bundle config set --global https://rubygems-puppetcore.puppet.com "$USERNAME:$PASSWORD"`
 
 Strict enforcement flags (all optional, default shown):
 
