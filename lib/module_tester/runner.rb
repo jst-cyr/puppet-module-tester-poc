@@ -119,6 +119,10 @@ module ModuleTester
         'PUPPET_COMPAT_METADATA_MODE' => @options[:metadata_mode].to_s
       )
 
+      if ENV.fetch('PUPPET_CORE_API_KEY', '').strip != ''
+        env['BUNDLE_RUBYGEMS__PUPPETCORE__PUPPET__COM'] = "forge-key:#{ENV.fetch('PUPPET_CORE_API_KEY', '')}"
+      end
+
       run_bootstrap_if_needed(module_dir, env, result)
       run_adapters(module_dir, env, profile, result)
 
@@ -303,23 +307,27 @@ module ModuleTester
           output, status = Open3.capture2e(env, *command, chdir: cwd)
         end
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        trimmed_output = output.to_s
+        trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
         StageResult.new(
           name: name,
           status: status.success? ? 'passed' : 'failed',
           command: command.shelljoin,
           exit_code: status.exitstatus,
           duration_seconds: elapsed.round(2),
-          output: output.to_s[-20_000..]
+          output: trimmed_output
         )
       rescue Timeout::Error
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        trimmed_output = output.to_s
+        trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
         StageResult.new(
           name: name,
           status: 'failed',
           command: command.shelljoin,
           exit_code: -1,
           duration_seconds: elapsed.round(2),
-          output: "Timeout after #{timeout_seconds}s\n#{output.to_s[-20_000..]}"
+          output: "Timeout after #{timeout_seconds}s\n#{trimmed_output}"
         )
       end
     end
