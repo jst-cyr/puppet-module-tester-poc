@@ -58,6 +58,7 @@ Edit `config/modules.json`:
 Edit `profiles/puppet_profiles.json` to pin Puppet/Ruby/Bundler and artifact mode.
 
 - `gem_source_mode=private` requires `PUPPET_CORE_API_KEY`
+- `puppet_core_version` and `facter_version` are pinned per profile for strict Puppet Core validation
 - `metadata_mode=warn` keeps metadata mismatches as warnings (phase-1 policy)
 
 ## GitHub Actions secret setup
@@ -81,6 +82,12 @@ Authentication model (from Puppet gem installation guidance):
 The runner sets Bundler credentials using:
 
 - `BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM=forge-key:<PUPPET_CORE_API_KEY>`
+
+Split-source behavior (default):
+
+- Community/Vox test gems are resolved from `https://rubygems.org`
+- `puppet` and `facter` are pinned and resolved from `https://rubygems-puppetcore.puppet.com`
+- This allows Vox test harness gems while still enforcing Puppet Core runtime gems
 
 ## GitHub Actions usage
 
@@ -117,17 +124,19 @@ If testing auth manually outside the runner, Puppet docs recommend Bundler confi
 Strict enforcement flags (all optional, default shown):
 
 - `PUPPET_ENFORCE_PRIVATE_SOURCE=true`
-- `PUPPET_ENFORCE_NO_OPENVOX=true`
+- `PUPPET_ENFORCE_NO_OPENVOX=false` (set true only if you explicitly want to fail when `openvox` appears)
 - `PUPPET_ENFORCE_EXACT_PUPPET_VERSION=true`
 - `PUPPET_REQUIRED_PDK_VERSION` (unset by default; set to a prefix like `3.6` to require and verify PDK version)
+- `PUPPET_SPLIT_SOURCES=true`
 
 Recommended defaults for this POC:
 
 - `PUPPET_COMPAT_METADATA_MODE=warn`
 - `PUPPET_COMPAT_TARGET=8-latest-maintained`
 - `PUPPET_ENFORCE_PRIVATE_SOURCE=true`
-- `PUPPET_ENFORCE_NO_OPENVOX=true`
+- `PUPPET_ENFORCE_NO_OPENVOX=false`
 - `PUPPET_ENFORCE_EXACT_PUPPET_VERSION=true`
+- `PUPPET_SPLIT_SOURCES=true`
 
 ## Policy decisions currently in effect
 

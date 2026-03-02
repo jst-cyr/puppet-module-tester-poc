@@ -49,8 +49,9 @@ jobs:
       PUPPET_CORE_SOURCE_URL: https://rubygems-puppetcore.puppet.com
       PUPPET_COMPAT_METADATA_MODE: ${{ github.event.inputs.metadata_mode || 'warn' }}
       PUPPET_ENFORCE_PRIVATE_SOURCE: "true"
-      PUPPET_ENFORCE_NO_OPENVOX: "true"
+      PUPPET_ENFORCE_NO_OPENVOX: "false"
       PUPPET_ENFORCE_EXACT_PUPPET_VERSION: "true"
+      PUPPET_SPLIT_SOURCES: "true"
 
     steps:
       - name: Checkout

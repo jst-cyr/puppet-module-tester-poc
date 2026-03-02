@@ -285,7 +285,22 @@ module ModuleTester
 
       if profile.fetch('gem_source_mode') == 'private'
         source_url = ENV.fetch('PUPPET_CORE_SOURCE_URL', DEFAULT_PUPPET_CORE_SOURCE_URL).strip
-        result[:stages] << run_stage('bundle_config_source', ['bundle', 'config', 'set', '--local', 'mirror.https://rubygems.org', source_url], module_dir, env)
+        result[:stages] << run_stage('bundle_config_source', ['bundle', 'config', 'set', '--local', source_url, "forge-key:#{ENV.fetch('PUPPET_CORE_API_KEY', '')}"], module_dir, env)
+
+        if split_source_mode?
+          overlay_gemfile = write_split_gemfile(module_dir, profile, source_url)
+          env['BUNDLE_GEMFILE'] = overlay_gemfile
+          result[:stages] << StageResult.new(
+            name: 'bundle_config_split_gemfile',
+            status: 'passed',
+            command: nil,
+            exit_code: 0,
+            duration_seconds: 0,
+            output: "Using split-source Gemfile: #{overlay_gemfile}"
+          )
+        else
+          result[:stages] << run_stage('bundle_config_source_mirror', ['bundle', 'config', 'set', '--local', 'mirror.https://rubygems.org', source_url], module_dir, env)
+        end
       end
 
       result[:stages] << run_stage('bootstrap', ['bundle', 'install'], module_dir, env)
@@ -295,8 +310,9 @@ module ModuleTester
       if profile.fetch('gem_source_mode') == 'private' && enforce_private_source?
         bootstrap_stage = result[:stages].find { |stage| stage.name == 'bootstrap' }
         bootstrap_output = bootstrap_stage&.output.to_s
-        if bootstrap_output.include?('https://rubygems.org')
-          result[:stages] << failed_stage('enforce_private_source', 'Detected rubygems.org usage during bootstrap while private source is required')
+        source_url = ENV.fetch('PUPPET_CORE_SOURCE_URL', DEFAULT_PUPPET_CORE_SOURCE_URL).strip
+        unless bootstrap_output.include?(source_url)
+          result[:stages] << failed_stage('enforce_private_source', "Expected bootstrap to use #{source_url} for Puppet Core gems")
         end
       end
 
@@ -346,7 +362,7 @@ module ModuleTester
     end
 
     def enforce_no_openvox?
-      ENV.fetch('PUPPET_ENFORCE_NO_OPENVOX', 'true') == 'true'
+      ENV.fetch('PUPPET_ENFORCE_NO_OPENVOX', 'false') == 'true'
     end
 
     def enforce_exact_puppet_version?
@@ -366,6 +382,28 @@ module ModuleTester
 
     def stages_failed_since?(result, count)
       result[:stages][count..].to_a.any? { |stage| stage.status != 'passed' }
+    end
+
+    def split_source_mode?
+      ENV.fetch('PUPPET_SPLIT_SOURCES', 'true') == 'true'
+    end
+
+    def write_split_gemfile(module_dir, profile, source_url)
+      overlay_gemfile = File.join(module_dir, 'Gemfile.puppetcore')
+      puppet_version = profile.fetch('puppet_core_version').to_s
+      facter_version = profile.fetch('facter_version', '').to_s
+
+      lines = []
+      lines << "eval_gemfile 'Gemfile'"
+      lines << ""
+      lines << "source '#{source_url}' do"
+      lines << "  gem 'puppet', '= #{puppet_version}', require: false"
+      lines << "  gem 'facter', '= #{facter_version}', require: false" unless facter_version.empty?
+      lines << "end"
+      lines << ""
+
+      File.write(overlay_gemfile, lines.join("\n"))
+      overlay_gemfile
     end
 
     def run_adapters(module_dir, env, profile, result)
