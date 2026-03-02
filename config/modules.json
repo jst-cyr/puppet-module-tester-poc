@@ -1,0 +1,8 @@
+{
+  "modules": [
+    {
+      "repo": "https://github.com/voxpupuli/puppet-windows_firewall",
+      "ref": "main"
+    }
+  ]
+}

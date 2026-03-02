@@ -1,0 +1,96 @@
+name: Puppet Module Compatibility Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Compatibility profile name"
+        required: false
+        default: "8-latest-maintained"
+      metadata_mode:
+        description: "Metadata handling mode (warn|fail)"
+        required: false
+        default: "warn"
+      modules_json:
+        description: "Optional JSON array override: [{\"repo\":\"...\",\"ref\":\"main\"}]"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build module matrix
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          MATRIX=$(ruby -rjson -e "raw='${{ github.event.inputs.modules_json }}'.strip; modules=raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules',[]) : JSON.parse(raw); out=modules.map{|m| repo=m.fetch('repo'); ref=m.fetch('ref','main'); id=(m['id'] || repo.sub(%r{/$},'').split('/').last.sub(/\\.git$/,'').gsub(/[^a-zA-Z0-9_.-]+/,'-')); {'repo'=>repo,'ref'=>ref,'id'=>id}}; puts JSON.generate(out)")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    env:
+      PUPPET_CORE_API_KEY: ${{ secrets.PUPPET_CORE_API_KEY }}
+      PUPPET_CORE_SOURCE_URL: ${{ secrets.PUPPET_CORE_SOURCE_URL }}
+      PUPPET_CORE_AUTH_HEADER: ${{ secrets.PUPPET_CORE_AUTH_HEADER }}
+      PUPPET_COMPAT_METADATA_MODE: ${{ github.event.inputs.metadata_mode || 'warn' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install runner
+        run: |
+          bundle install
+
+      - name: Build single-module config
+        shell: bash
+        run: |
+          mkdir -p .tmp
+          ruby -rjson -e "mod=JSON.parse(ENV.fetch('MODULE_JSON')); File.write('.tmp/single-module.json', JSON.pretty_generate({'modules'=>[{'repo'=>mod.fetch('repo'),'ref'=>mod.fetch('ref','main')}] }))"
+        env:
+          MODULE_JSON: ${{ toJson(matrix.module) }}
+
+      - name: Run compatibility runner
+        run: |
+          ruby bin/puppet-module-tester \
+            --modules-file .tmp/single-module.json \
+            --profiles-file profiles/puppet_profiles.json \
+            --profile "${{ github.event.inputs.profile || '8-latest-maintained' }}" \
+            --workspace-dir workspace \
+            --output-dir "results/${{ matrix.module.id }}"
+
+      - name: Upload module artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.module.id }}
+          path: results/${{ matrix.module.id }}
+
+  summarize:
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    steps:
+      - name: Complete
+        run: echo "Compatibility run finished. See artifacts for reports."
