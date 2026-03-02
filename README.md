@@ -47,7 +47,7 @@ Edit `config/modules.json`:
 	"modules": [
 		{
 			"repo": "https://github.com/voxpupuli/puppet-windows_firewall",
-			"ref": "main"
+			"ref": "master"
 		}
 	]
 }
@@ -69,15 +69,9 @@ In your GitHub repository, go to **Settings → Secrets and variables → Action
 - `PUPPET_CORE_API_KEY`  
 	API key/token for your Puppet account that has access to Puppet Core artifacts.
 
-Optional (if your endpoint is not the default used by your workflow/app):
+No additional secret is required for source URL by default. The runner/workflow defaults to:
 
-- `PUPPET_CORE_SOURCE_URL`  
-	Base URL for the artifact source (gem repo/package endpoint/mirror).
-
-Optional (for custom auth header schemes):
-
-- `PUPPET_CORE_AUTH_HEADER`  
-	Header name expected by the source. Example: `Authorization`.
+- `PUPPET_CORE_SOURCE_URL=https://rubygems-puppetcore.puppet.com`
 
 ## GitHub Actions usage
 
@@ -98,8 +92,7 @@ Example `modules_json` input:
 Use these env vars in your GitHub Actions workflow jobs:
 
 - `PUPPET_CORE_API_KEY` (required)
-- `PUPPET_CORE_SOURCE_URL` (optional)
-- `PUPPET_CORE_AUTH_HEADER` (optional)
+- `PUPPET_CORE_SOURCE_URL` (optional override; defaults to `https://rubygems-puppetcore.puppet.com`)
 - `PUPPET_COMPAT_METADATA_MODE` (recommended): set to `warn` for phase 1
 
 Strict enforcement flags (all optional, default shown):
