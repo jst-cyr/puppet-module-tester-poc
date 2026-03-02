@@ -75,6 +75,8 @@ jobs:
           MODULE_JSON: ${{ toJson(matrix.module) }}
 
       - name: Run compatibility runner
+        id: run_runner
+        continue-on-error: true
         run: |
           ruby bin/puppet-module-tester \
             --modules-file .tmp/single-module.json \
@@ -84,10 +86,31 @@ jobs:
             --output-dir "results/${{ matrix.module.id }}"
 
       - name: Upload module artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: compatibility-${{ matrix.module.id }}
           path: results/${{ matrix.module.id }}
+          if-no-files-found: warn
+
+      - name: Show failure diagnostics
+        if: steps.run_runner.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Runner failed for module: ${{ matrix.module.id }}"
+          echo "---- compatibility-summary.md ----"
+          if [ -f "results/${{ matrix.module.id }}/compatibility-summary.md" ]; then
+            cat "results/${{ matrix.module.id }}/compatibility-summary.md"
+          else
+            echo "summary file not found"
+          fi
+          echo "---- compatibility-report.json (first 200 lines) ----"
+          if [ -f "results/${{ matrix.module.id }}/compatibility-report.json" ]; then
+            sed -n '1,200p' "results/${{ matrix.module.id }}/compatibility-report.json"
+          else
+            echo "report file not found"
+          fi
+          exit 1
 
   summarize:
     runs-on: ubuntu-latest
