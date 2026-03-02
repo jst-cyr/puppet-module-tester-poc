@@ -1,5 +1,6 @@
 vendor/bundle/
 .bundle/
 *.gem
+.puppet-module-tester.local.yml
 results/
 workspace/
