@@ -37,6 +37,7 @@ jobs:
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   test:
+    name: test / ${{ matrix.module.id }}
     runs-on: ubuntu-latest
     needs: prepare
     strategy:
