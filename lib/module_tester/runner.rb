@@ -456,17 +456,54 @@ module ModuleTester
 
     def run_stage(name, command, cwd, env, timeout_seconds = 1800)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      output = ''
+      output_lines = []
       status = nil
       safe_command = redact_sensitive(command.shelljoin)
+      log_file = File.join(cwd, ".stage-#{name}.log")
+
+      puts "\n[#{Time.now.strftime('%H:%M:%S')}] => #{name}"
+      puts "  Command: #{safe_command}"
+      puts "  Timeout: #{timeout_seconds}s"
+      puts "  Log: #{log_file}"
 
       begin
         Timeout.timeout(timeout_seconds) do
-          output, status = Open3.capture2e(env, *command, chdir: cwd)
+          File.open(log_file, 'w') do |log|
+            Open3.popen3(env, *command, chdir: cwd) do |stdin, stdout, stderr, thread|
+              # Close stdin immediately
+              stdin.close
+
+              # Merge stdout and stderr
+              streams = [stdout, stderr]
+              threads = streams.map do |stream|
+                Thread.new do
+                  stream.each_line do |line|
+                    line_str = line.chomp
+                    # Write to log with timestamp
+                    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+                    log.puts "[#{elapsed.round(2)}s] #{line_str}"
+                    log.flush
+                    # Print to console
+                    puts "  #{line_str}"
+                    # Collect for report (redact later)
+                    output_lines << line_str
+                  end
+                end
+              end
+              threads.each(&:join)
+              thread.join
+              status = thread.value
+            end
+          end
         end
+
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-        trimmed_output = output.to_s
+        puts "  ✓ Completed in #{elapsed.round(2)}s (exit: #{status.exitstatus})"
+
+        full_output = output_lines.join("\n")
+        trimmed_output = full_output
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
+
         StageResult.new(
           name: name,
           status: status.success? ? 'passed' : 'failed',
@@ -477,8 +514,13 @@ module ModuleTester
         )
       rescue Timeout::Error
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-        trimmed_output = output.to_s
+        puts "  ✗ TIMEOUT after #{elapsed.round(2)}s (limit: #{timeout_seconds}s)"
+        puts "  Debug log saved to: #{log_file}"
+
+        full_output = output_lines.join("\n")
+        trimmed_output = full_output
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
+
         StageResult.new(
           name: name,
           status: 'failed',
