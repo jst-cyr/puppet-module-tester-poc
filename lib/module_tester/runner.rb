@@ -342,7 +342,7 @@ module ModuleTester
             'exec',
             'ruby',
             '-e',
-            "spec=Gem::Specification.find_all_by_name('puppet').max_by(&:version); abort('puppet gem not installed') unless spec; expected=ENV.fetch('PUPPET_GEM_VERSION'); abort(\"puppet #{spec.version} != #{expected}\") unless spec.version.to_s == expected; puts \"puppet #{spec.version}\""
+            "spec=Gem::Specification.find_all_by_name('puppet').max_by(&:version); abort('puppet gem not installed') unless spec; expected=ENV.fetch('PUPPET_GEM_VERSION'); abort(\"puppet \#{spec.version} != \#{expected}\") unless spec.version.to_s == expected; puts \"puppet \#{spec.version}\""
           ],
           module_dir,
           env
