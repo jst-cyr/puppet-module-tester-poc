@@ -3,6 +3,10 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-windows_firewall",
       "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-nginx",
+      "ref": "master"
     }
   ]
 }
