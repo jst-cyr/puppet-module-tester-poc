@@ -281,7 +281,9 @@ module ModuleTester
     def run_bootstrap_if_needed(module_dir, env, result, profile)
       return unless File.exist?(File.join(module_dir, 'Gemfile')) && command_available?('bundle')
 
-      result[:stages] << run_stage('bundle_config_path', ['bundle', 'config', 'set', '--local', 'path', 'vendor/bundle'], module_dir, env)
+      bundle_path = ENV.fetch('PUPPET_COMPAT_BUNDLE_PATH', 'vendor/bundle').to_s.strip
+      bundle_path = 'vendor/bundle' if bundle_path.empty?
+      result[:stages] << run_stage('bundle_config_path', ['bundle', 'config', 'set', '--local', 'path', bundle_path], module_dir, env)
       result[:stages] << run_stage('bundle_config_multisource', ['bundle', 'config', 'set', '--local', 'disable_multisource', 'true'], module_dir, env)
 
       if profile.fetch('gem_source_mode') == 'private'
