@@ -79,9 +79,9 @@ module ModuleTester
       major = parts[0]
       minor = parts[1]
 
-      return if major == SUPPORTED_RUBY_MAJOR && minor == SUPPORTED_RUBY_MINOR
+      return if major > SUPPORTED_RUBY_MAJOR || (major == SUPPORTED_RUBY_MAJOR && minor >= SUPPORTED_RUBY_MINOR)
 
-      raise "Unsupported Ruby #{RUBY_VERSION}. This runner only supports Ruby #{SUPPORTED_RUBY_MAJOR}.#{SUPPORTED_RUBY_MINOR}."
+      raise "Unsupported Ruby #{RUBY_VERSION}. This runner requires Ruby #{SUPPORTED_RUBY_MAJOR}.#{SUPPORTED_RUBY_MINOR} or later."
     end
 
     def parse_options!
@@ -482,40 +482,15 @@ module ModuleTester
 
       begin
         Timeout.timeout(timeout_seconds) do
-          File.open(log_file, 'w') do |log|
-            Open3.popen3(env, *command, chdir: cwd) do |stdin, stdout, stderr, thread|
-              # Close stdin immediately
-              stdin.close
 
-              # Merge stdout and stderr
-              streams = [stdout, stderr]
-              threads = streams.map do |stream|
-                Thread.new do
-                  stream.each_line do |line|
-                    line_str = line.chomp
-                    # Write to log with timestamp
-                    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-                    log.puts "[#{elapsed.round(2)}s] #{line_str}"
-                    log.flush
-                    # Print to console
-                    puts "  #{line_str}"
-                    # Collect for report (redact later)
-                    output_lines << line_str
-                  end
-                end
-              end
-              threads.each(&:join)
-              thread.join
-              status = thread.value
-            end
-          end
+          output, status = Open3.capture2e(env, *command, chdir: cwd)
+          File.write(log_file, output.to_s)
         end
+
 
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         puts "  ✓ Completed in #{elapsed.round(2)}s (exit: #{status.exitstatus})"
-
-        full_output = output_lines.join("\n")
-        trimmed_output = full_output
+        trimmed_output = output.to_s
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
 
         StageResult.new(
@@ -531,8 +506,7 @@ module ModuleTester
         puts "  ✗ TIMEOUT after #{elapsed.round(2)}s (limit: #{timeout_seconds}s)"
         puts "  Debug log saved to: #{log_file}"
 
-        full_output = output_lines.join("\n")
-        trimmed_output = full_output
+        trimmed_output = output.to_s
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
 
         StageResult.new(
