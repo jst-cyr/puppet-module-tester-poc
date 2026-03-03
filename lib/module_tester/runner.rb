@@ -416,7 +416,9 @@ module ModuleTester
     end
 
     def run_adapters(module_dir, env, profile, result)
-      if command_available?('pdk')
+      prefer_rake = result[:capability].is_a?(Hash) && result[:capability]['uses_vox_vars']
+
+      if command_available?('pdk') && !prefer_rake
         result[:stages] << run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         return
