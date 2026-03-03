@@ -5,6 +5,10 @@ This is a proof-of-concept to see if there is a simpler way of testing modules a
 
 Run compatibility tests for Vox Pupuli (and other community) modules against Puppet Core, using an external harness and GitHub Actions, without requiring source changes in the tested module.
 
+## Platform setup
+
+- Windows native setup: [README_Windows.md](README_Windows.md)
+
 ## What is implemented
 
 - Ruby CLI runner: `bin/puppet-module-tester`
