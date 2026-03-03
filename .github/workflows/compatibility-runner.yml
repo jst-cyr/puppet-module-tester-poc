@@ -39,6 +39,7 @@ jobs:
   test:
     name: test / ${{ matrix.module.id }}
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(vars.PUPPET_JOB_TIMEOUT_MINUTES || '360') }}
     needs: prepare
     strategy:
       fail-fast: false
@@ -53,6 +54,7 @@ jobs:
       PUPPET_ENFORCE_NO_OPENVOX: "false"
       PUPPET_ENFORCE_EXACT_PUPPET_VERSION: "true"
       PUPPET_SPLIT_SOURCES: "true"
+      PUPPET_STAGE_TIMEOUT_SECONDS: ${{ vars.PUPPET_STAGE_TIMEOUT_SECONDS || '1800' }}
 
     steps:
       - name: Checkout

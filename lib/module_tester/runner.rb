@@ -468,7 +468,8 @@ module ModuleTester
       end
     end
 
-    def run_stage(name, command, cwd, env, timeout_seconds = 1800)
+    def run_stage(name, command, cwd, env, timeout_seconds = nil)
+      timeout_seconds = resolve_timeout(timeout_seconds)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       output_buffer = String.new
       status = nil
@@ -531,6 +532,22 @@ module ModuleTester
           output: redact_sensitive("Timeout after #{timeout_seconds}s\n#{trimmed_output}")
         )
       end
+    end
+
+    def resolve_timeout(explicit_timeout = nil)
+      explicit_value = explicit_timeout.to_i
+      return explicit_value if explicit_value.positive?
+
+      env_value = integer_or_nil(ENV.fetch('PUPPET_STAGE_TIMEOUT_SECONDS', nil))
+      return env_value if env_value && env_value.positive?
+
+      1800
+    end
+
+    def integer_or_nil(raw)
+      return nil if raw.nil?
+
+      Integer(raw.to_s.strip, exception: false)
     end
 
     def redact_sensitive(text)
