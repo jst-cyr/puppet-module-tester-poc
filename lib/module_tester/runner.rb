@@ -117,48 +117,52 @@ module ModuleTester
       module_dir = File.join(@options[:workspace_dir], 'modules', module_name)
       result = new_result(module_name, ref, profile.fetch('name'))
 
-      ok, clone_output = clone_repo(repo, ref, module_dir)
-      unless ok
-        result[:stages] << StageResult.new(name: 'clone', status: 'failed', command: "git clone --depth 1 --branch #{ref} #{repo}", exit_code: 1, output: clone_output)
-        result[:compatibility_state] = 'inconclusive'
-        return result
+      begin
+        ok, clone_output = clone_repo(repo, ref, module_dir)
+        unless ok
+          result[:stages] << StageResult.new(name: 'clone', status: 'failed', command: "git clone --depth 1 --branch #{ref} #{repo}", exit_code: 1, output: clone_output)
+          result[:compatibility_state] = 'inconclusive'
+          return result
+        end
+
+        result[:capability] = discover_capabilities(module_dir)
+        result[:metadata_status], result[:metadata_message] = evaluate_metadata(module_dir, profile.fetch('puppet_core_version'))
+        result[:auth_status], result[:auth_message] = auth_status(profile.fetch('gem_source_mode'))
+
+        if result[:auth_status] != 'ok'
+          result[:compatibility_state] = 'inconclusive'
+          return result
+        end
+
+        env = ENV.to_h.merge(
+          'PUPPET_GEM_VERSION' => profile.fetch('puppet_core_version').to_s,
+          'PUPPET_COMPAT_METADATA_MODE' => @options[:metadata_mode].to_s
+        )
+
+        puppet_core_api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').strip
+        if puppet_core_api_key != ''
+          env['USERNAME'] = 'forge-key'
+          env['PASSWORD'] = puppet_core_api_key
+          env['BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM'] = "forge-key:#{puppet_core_api_key}"
+        end
+
+        pre_stage_count = result[:stages].length
+        run_bootstrap_if_needed(module_dir, env, result, profile)
+        return finish_early(result) if stages_failed_since?(result, pre_stage_count)
+
+        pre_stage_count = result[:stages].length
+        enforce_runtime_guardrails(module_dir, env, result, profile)
+        return finish_early(result) if stages_failed_since?(result, pre_stage_count)
+
+        pre_stage_count = result[:stages].length
+        run_adapters(module_dir, env, profile, result)
+        return finish_early(result) if stages_failed_since?(result, pre_stage_count)
+
+        result[:compatibility_state] = resolve_state(result)
+        result
+      ensure
+        export_stage_logs(module_name, module_dir)
       end
-
-      result[:capability] = discover_capabilities(module_dir)
-      result[:metadata_status], result[:metadata_message] = evaluate_metadata(module_dir, profile.fetch('puppet_core_version'))
-      result[:auth_status], result[:auth_message] = auth_status(profile.fetch('gem_source_mode'))
-
-      if result[:auth_status] != 'ok'
-        result[:compatibility_state] = 'inconclusive'
-        return result
-      end
-
-      env = ENV.to_h.merge(
-        'PUPPET_GEM_VERSION' => profile.fetch('puppet_core_version').to_s,
-        'PUPPET_COMPAT_METADATA_MODE' => @options[:metadata_mode].to_s
-      )
-
-      puppet_core_api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').strip
-      if puppet_core_api_key != ''
-        env['USERNAME'] = 'forge-key'
-        env['PASSWORD'] = puppet_core_api_key
-        env['BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM'] = "forge-key:#{puppet_core_api_key}"
-      end
-
-      pre_stage_count = result[:stages].length
-      run_bootstrap_if_needed(module_dir, env, result, profile)
-      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
-
-      pre_stage_count = result[:stages].length
-      enforce_runtime_guardrails(module_dir, env, result, profile)
-      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
-
-      pre_stage_count = result[:stages].length
-      run_adapters(module_dir, env, profile, result)
-      return finish_early(result) if stages_failed_since?(result, pre_stage_count)
-
-      result[:compatibility_state] = resolve_state(result)
-      result
     end
 
     def finish_early(result)
@@ -608,6 +612,23 @@ module ModuleTester
       write_json(results)
       write_junit(results)
       write_summary(results)
+    end
+
+    def export_stage_logs(module_name, module_dir)
+      return unless Dir.exist?(module_dir)
+
+      stage_logs = Dir.glob(File.join(module_dir, '.stage-*.log')).sort
+      return if stage_logs.empty?
+
+      artifacts_dir = File.join(@options[:output_dir], 'artifacts', module_name)
+      FileUtils.rm_rf(artifacts_dir)
+      FileUtils.mkdir_p(artifacts_dir)
+
+      stage_logs.each do |path|
+        FileUtils.cp(path, File.join(artifacts_dir, File.basename(path)))
+      end
+    rescue StandardError => e
+      warn "Failed to export stage logs for #{module_name}: #{e.message}"
     end
 
     def write_json(results)

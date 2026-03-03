@@ -27,6 +27,7 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 	- JSON report: `results/.../compatibility-report.json`
 	- JUnit report: `results/.../compatibility-report.junit.xml`
 	- Markdown summary: `results/.../compatibility-summary.md`
+	- Stage logs per module: `results/.../artifacts/<module>/.stage-*.log`
 - GitHub Actions workflow with module matrix: `.github/workflows/compatibility-runner.yml`
 
 ## Quick start (local)
