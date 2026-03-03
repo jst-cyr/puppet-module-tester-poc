@@ -470,7 +470,7 @@ module ModuleTester
 
     def run_stage(name, command, cwd, env, timeout_seconds = 1800)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      output_lines = []
+      output_buffer = String.new
       status = nil
       safe_command = redact_sensitive(command.shelljoin)
       log_file = File.join(cwd, ".stage-#{name}.log")
@@ -482,15 +482,28 @@ module ModuleTester
 
       begin
         Timeout.timeout(timeout_seconds) do
+          File.open(log_file, 'w') do |log|
+            Open3.popen2e(env, *command, chdir: cwd) do |stdin, combined, wait_thr|
+              stdin.close
 
-          output, status = Open3.capture2e(env, *command, chdir: cwd)
-          File.write(log_file, output.to_s)
+              loop do
+                chunk = combined.readpartial(2048)
+                output_buffer << chunk
+                redacted_chunk = redact_sensitive(chunk)
+                print redacted_chunk
+                log.write(redacted_chunk)
+                log.flush
+              end
+            rescue EOFError
+              status = wait_thr.value
+            end
+          end
         end
 
 
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         puts "  ✓ Completed in #{elapsed.round(2)}s (exit: #{status.exitstatus})"
-        trimmed_output = output.to_s
+        trimmed_output = output_buffer.to_s
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
 
         StageResult.new(
@@ -506,7 +519,7 @@ module ModuleTester
         puts "  ✗ TIMEOUT after #{elapsed.round(2)}s (limit: #{timeout_seconds}s)"
         puts "  Debug log saved to: #{log_file}"
 
-        trimmed_output = output.to_s
+        trimmed_output = output_buffer.to_s
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
 
         StageResult.new(
