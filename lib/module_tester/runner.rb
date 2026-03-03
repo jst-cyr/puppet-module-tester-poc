@@ -31,6 +31,9 @@ module ModuleTester
   )
 
   class Runner
+    SUPPORTED_RUBY_MAJOR = 3
+    SUPPORTED_RUBY_MINOR = 2
+
     DEFAULTS = {
       modules_file: 'config/modules.json',
       profiles_file: 'profiles/puppet_profiles.json',
@@ -48,6 +51,7 @@ module ModuleTester
     end
 
     def run
+      enforce_ruby_version!
       profiles = load_profiles(@options[:profiles_file])
       profile = profiles[@options[:profile]]
       raise "Unknown profile '#{@options[:profile]}'" unless profile
@@ -69,6 +73,16 @@ module ModuleTester
     end
 
     private
+
+    def enforce_ruby_version!
+      parts = RUBY_VERSION.split('.').map { |p| Integer(p, exception: false) }
+      major = parts[0]
+      minor = parts[1]
+
+      return if major == SUPPORTED_RUBY_MAJOR && minor == SUPPORTED_RUBY_MINOR
+
+      raise "Unsupported Ruby #{RUBY_VERSION}. This runner only supports Ruby #{SUPPORTED_RUBY_MAJOR}.#{SUPPORTED_RUBY_MINOR}."
+    end
 
     def parse_options!
       OptionParser.new do |opts|

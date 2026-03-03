@@ -4,7 +4,7 @@ This guide covers running the compatibility runner natively on Windows (no WSL).
 
 ## 1) Prerequisites
 
-- RubyInstaller Ruby (x64 UCRT) installed (example: Ruby 3.4.x)
+- RubyInstaller Ruby (x64 UCRT) installed (example: Ruby 3.2.x)
 - Git installed
 - Administrative PowerShell access (for one-time long-path setting)
 

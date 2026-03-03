@@ -31,7 +31,7 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 
 ## Quick start (local)
 
-1. Install Ruby 3.2+ and Bundler.
+1. Install Ruby 3.2.x and Bundler.
 2. From repo root:
 
 	 `bundle install`
