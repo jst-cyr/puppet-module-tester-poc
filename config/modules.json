@@ -7,6 +7,18 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-nginx",
       "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-archive",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-selinux",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-windowsfeature",
+      "ref": "master"
     }
   ]
 }
