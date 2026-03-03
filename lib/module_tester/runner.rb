@@ -60,7 +60,7 @@ module ModuleTester
       end
 
       write_reports(results)
-      return 1 if results.any? { |result| result[:compatibility_state] == 'harness_error' }
+      return 1 if results.any? { |result| %w[harness_error not_compatible].include?(result[:compatibility_state]) }
 
       0
     rescue StandardError => e
