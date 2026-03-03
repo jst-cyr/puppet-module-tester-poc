@@ -62,16 +62,20 @@ puppet_core_source_url: "https://rubygems-puppetcore.puppet.com"
 puppet_core_auth_header: "X-Api-Key"
 puppet_compat_metadata_mode: "warn"
 puppet_compat_target: "8-latest-maintained"
+puppet_compat_workspace_dir: "C:/Temp/pmt-workspace"
+puppet_compat_bundle_path: "C:/Temp/pmt-bundle"
+puppet_compat_output_dir: "results/local"
 ```
 
 Never commit this file.
+
+Recommended on Windows: keep `puppet_compat_workspace_dir` and `puppet_compat_bundle_path` under a short root like `C:/Temp` to avoid deep-path failures in Ruby/Bundler toolchains.
 
 ## 5) Run locally
 
 From repo root:
 
 ```powershell
-bundle install
 ruby scripts/run_local.rb
 ```
 
@@ -86,12 +90,13 @@ Reports are written to:
 1. Clean the module bundle and rerun:
 
 ```powershell
-Remove-Item -Recurse -Force .\workspace\modules\puppet-windows_firewall\vendor\bundle -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force C:\Temp\pmt-workspace -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force C:\Temp\pmt-bundle -ErrorAction SilentlyContinue
 ruby scripts/run_local.rb
 ```
 
 2. If native extension errors persist (for example `fiddle`/`libffi`), rerun package install step in section 3.
-3. Confirm long paths are enabled and that your repo path is short (for example `C:\GitHub\puppet-module-tester-poc`).
+3. Confirm long paths are enabled and that runtime paths are short (`C:\Temp\...`) while keeping repo path reasonably short (for example `C:\GitHub\puppet-module-tester-poc`).
 
 ## Notes
 
