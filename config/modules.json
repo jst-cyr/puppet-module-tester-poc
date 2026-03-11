@@ -1,11 +1,7 @@
 {
   "modules": [
     {
-      "repo": "https://github.com/voxpupuli/puppet-windows_firewall",
-      "ref": "master"
-    },
-    {
-      "repo": "https://github.com/voxpupuli/puppet-nginx",
+      "repo": "https://github.com/voxpupuli/puppet-alternatives",
       "ref": "master"
     },
     {
@@ -13,11 +9,43 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-augeasproviders_core",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-cron",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-epel",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-extlib",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-logrotate",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-nginx",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-python",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-selinux",
       "ref": "master"
     },
     {
-      "repo": "https://github.com/voxpupuli/puppet-windowsfeature",
+      "repo": "https://github.com/voxpupuli/puppet-systemd",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-yum",
       "ref": "master"
     }
   ]
