@@ -89,6 +89,91 @@ jobs:
             --workspace-dir workspace \
             --output-dir "results/${{ matrix.module.id }}"
 
+      - name: Classify module result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="results/${{ matrix.module.id }}/compatibility-report.json"
+          STATUS_FILE="results/${{ matrix.module.id }}/module-status.json"
+
+          mkdir -p "results/${{ matrix.module.id }}"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          report = os.environ['REPORT']
+          status_file = os.environ['STATUS_FILE']
+          module_id = os.environ['MODULE_ID']
+
+          payload = {
+              'id': module_id,
+              'class': 'failure',
+              'compatibility_state': 'missing_report',
+              'metadata_status': 'unknown',
+              'dependency_status': 'unknown',
+              'message': 'compatibility-report.json not found'
+          }
+
+          if os.path.exists(report):
+              with open(report, 'r', encoding='utf-8') as handle:
+                  parsed = json.load(handle)
+              result = (parsed.get('results') or [{}])[0]
+              state = result.get('compatibility_state', 'unknown')
+              metadata = result.get('metadata_status', 'unknown')
+              dependency = result.get('dependency_status', 'none')
+              dependency_message = result.get('dependency_message', '')
+
+              if state in ('harness_error', 'not_compatible'):
+                  klass = 'failure'
+              elif dependency == 'warning' or state == 'conditionally_compatible' or metadata != 'supported':
+                  klass = 'warning'
+              else:
+                  klass = 'clean'
+
+              message = f'state={state} metadata={metadata} dependency={dependency}'
+              if dependency_message:
+                  message = f'{message} {dependency_message}'
+
+              payload = {
+                  'id': module_id,
+                  'class': klass,
+                  'compatibility_state': state,
+                  'metadata_status': metadata,
+                  'dependency_status': dependency,
+                  'message': message
+              }
+
+          with open(status_file, 'w', encoding='utf-8') as handle:
+              json.dump(payload, handle, indent=2)
+
+          print(f"class={payload['class']}")
+          print(f"message={payload['message']}")
+          PY
+        env:
+          REPORT: results/${{ matrix.module.id }}/compatibility-report.json
+          STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
+          MODULE_ID: ${{ matrix.module.id }}
+
+      - name: Emit module annotation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_FILE="results/${{ matrix.module.id }}/module-status.json"
+          CLASS=$(python3 -c "import json; print(json.load(open('${STATUS_FILE}', encoding='utf-8'))['class'])")
+          MESSAGE=$(python3 -c "import json; print(json.load(open('${STATUS_FILE}', encoding='utf-8'))['message'])")
+
+          if [ "$CLASS" = "failure" ]; then
+            echo "::error title=${{ matrix.module.id }}::$MESSAGE"
+          elif [ "$CLASS" = "warning" ]; then
+            echo "::warning title=${{ matrix.module.id }}::$MESSAGE"
+          else
+            echo "::notice title=${{ matrix.module.id }}::$MESSAGE"
+          fi
+
       - name: Upload module artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,5 +206,69 @@ jobs:
     needs: test
     if: always()
     steps:
-      - name: Complete
-        run: echo "Compatibility run finished. See artifacts for reports."
+      - name: Download module artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          pattern: compatibility-*
+          merge-multiple: false
+
+      - name: Summarize results
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          root = 'all-artifacts'
+          rows = []
+          counts = {'clean': 0, 'warning': 0, 'failure': 0}
+
+          if os.path.isdir(root):
+              for current_root, _dirs, files in os.walk(root):
+                  if 'module-status.json' not in files:
+                      continue
+                  path = os.path.join(current_root, 'module-status.json')
+                  with open(path, 'r', encoding='utf-8') as handle:
+                      row = json.load(handle)
+                  rows.append(row)
+                  counts[row['class']] = counts.get(row['class'], 0) + 1
+
+          rows.sort(key=lambda item: item['id'])
+
+          summary_path = os.environ['GITHUB_STEP_SUMMARY']
+          with open(summary_path, 'a', encoding='utf-8') as summary:
+              summary.write('# Compatibility Run Summary\n\n')
+              summary.write('| Module | Class | State | Metadata | Dependency |\n')
+              summary.write('|---|---|---|---|---|\n')
+              for row in rows:
+                  summary.write(
+                      f"| {row['id']} | {row['class']} | {row['compatibility_state']} | {row['metadata_status']} | {row['dependency_status']} |\n"
+                  )
+              summary.write('\n')
+              summary.write(
+                  f"**Totals:** clean={counts.get('clean', 0)}, warning={counts.get('warning', 0)}, failure={counts.get('failure', 0)}\n"
+              )
+
+          print(f"CLEAN={counts.get('clean', 0)}")
+          print(f"WARNING={counts.get('warning', 0)}")
+          print(f"FAILURE={counts.get('failure', 0)}")
+
+          if counts.get('failure', 0) > 0:
+              print(
+                  f"::error title=Compatibility summary::{counts['failure']} module(s) failed; {counts.get('warning', 0)} warning; {counts.get('clean', 0)} clean."
+              )
+              sys.exit(1)
+
+          if counts.get('warning', 0) > 0:
+              print(
+                  f"::warning title=Compatibility summary::{counts['warning']} module(s) with warnings; {counts.get('clean', 0)} clean."
+              )
+          else:
+              print(
+                  f"::notice title=Compatibility summary::All modules clean ({counts.get('clean', 0)})."
+              )
+          PY
