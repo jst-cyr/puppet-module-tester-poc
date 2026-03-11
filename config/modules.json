@@ -10,7 +10,15 @@
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-augeasproviders_core",
-      "ref": "master"
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "libaugeas-dev",
+          "augeas-tools",
+          "pkg-config",
+          "build-essential"
+        ]
+      }
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-cron",
