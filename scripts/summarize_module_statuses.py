@@ -36,11 +36,11 @@ def main() -> int:
 
     with open(summary_path, 'a', encoding='utf-8') as summary:
         summary.write('# Compatibility Run Summary\n\n')
-        summary.write('| Module | Class | State | Metadata | Dependency |\n')
-        summary.write('|---|---|---|---|---|\n')
+        summary.write('| Module | Class | State | Metadata | Dependency | Documentation |\n')
+        summary.write('|---|---|---|---|---|---|\n')
         for row in rows:
             summary.write(
-                f"| {row['id']} | {row['class']} | {row['compatibility_state']} | {row['metadata_status']} | {row['dependency_status']} |\n"
+                f"| {row['id']} | {row['class']} | {row['compatibility_state']} | {row['metadata_status']} | {row['dependency_status']} | {row.get('documentation_status', 'unknown')} |\n"
             )
 
         summary.write('\n')

@@ -34,12 +34,16 @@ def main() -> int:
     metadata_message = status.get('metadata_message', '')
     dependency_status = status.get('dependency_status', 'unknown')
     dependency_message = status.get('dependency_message', '')
+    documentation_status = status.get('documentation_status', 'unknown')
+    documentation_message = status.get('documentation_message', '')
 
     print(f'[{module_id}] class={summary_class} state={compatibility_state}')
     if metadata_status != 'supported':
         print(f'- metadata: {metadata_status} {metadata_message}'.strip())
     if dependency_status == 'warning':
         print(f'- dependency: {dependency_message or dependency_status}')
+    if documentation_status == 'warning':
+        print(f'- documentation: {documentation_message or documentation_status}')
 
     append_line(summary_path, f'## {module_id}')
     append_line(summary_path, '')
@@ -51,6 +55,9 @@ def main() -> int:
     append_line(summary_path, f'- Dependencies: {dependency_status}')
     if dependency_message:
         append_line(summary_path, f'  - {dependency_message}')
+    append_line(summary_path, f'- Documentation: {documentation_status}')
+    if documentation_message:
+        append_line(summary_path, f'  - {documentation_message}')
     append_line(summary_path, '')
     return 0
 

@@ -16,6 +16,8 @@ def main() -> int:
         'metadata_message': '',
         'dependency_status': 'unknown',
         'dependency_message': '',
+        'documentation_status': 'unknown',
+        'documentation_message': '',
         'message': 'compatibility-report.json not found',
     }
 
@@ -29,17 +31,21 @@ def main() -> int:
         metadata_message = result.get('metadata_message', '')
         dependency = result.get('dependency_status', 'none')
         dependency_message = result.get('dependency_message', '')
+        documentation = result.get('documentation_status', 'none')
+        documentation_message = result.get('documentation_message', '')
 
         if state in ('harness_error', 'not_compatible'):
             klass = 'failure'
-        elif dependency == 'warning' or state == 'conditionally_compatible' or metadata != 'supported':
+        elif dependency == 'warning' or documentation == 'warning' or state == 'conditionally_compatible' or metadata != 'supported':
             klass = 'warning'
         else:
             klass = 'clean'
 
-        message = f'state={state} metadata={metadata} dependency={dependency}'
+        message = f'state={state} metadata={metadata} dependency={dependency} documentation={documentation}'
         if dependency_message:
             message = f'{message} {dependency_message}'
+        if documentation_message:
+            message = f'{message} {documentation_message}'
 
         payload = {
             'id': module_id,
@@ -49,6 +55,8 @@ def main() -> int:
             'metadata_message': metadata_message,
             'dependency_status': dependency,
             'dependency_message': dependency_message,
+            'documentation_status': documentation,
+            'documentation_message': documentation_message,
             'message': message,
         }
 
@@ -58,7 +66,7 @@ def main() -> int:
     print(
         f"[{payload['id']}] class={payload['class']} "
         f"state={payload['compatibility_state']} "
-        f"metadata={payload['metadata_status']} dependency={payload['dependency_status']}"
+        f"metadata={payload['metadata_status']} dependency={payload['dependency_status']} documentation={payload['documentation_status']}"
     )
     return 0
 

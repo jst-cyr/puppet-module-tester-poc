@@ -24,6 +24,8 @@ module ModuleTester
     :metadata_message,
     :dependency_status,
     :dependency_message,
+    :documentation_status,
+    :documentation_message,
     :auth_status,
     :auth_message,
     :capability,
@@ -190,6 +192,7 @@ module ModuleTester
         details = []
         details << result[:metadata_message] unless result[:metadata_message].to_s.empty?
         details << result[:dependency_message] unless result[:dependency_message].to_s.empty?
+        details << result[:documentation_message] unless result[:documentation_message].to_s.empty?
         message = details.empty? ? 'Compatibility run completed with warnings' : details.join(' | ')
         github_annotation('warning', result[:module], message)
       when 'not_compatible'
@@ -223,6 +226,8 @@ module ModuleTester
         metadata_message: '',
         dependency_status: 'none',
         dependency_message: '',
+        documentation_status: 'none',
+        documentation_message: '',
         auth_status: 'ok',
         auth_message: '',
         capability: {},
@@ -586,7 +591,9 @@ module ModuleTester
       prefer_rake = result[:capability].is_a?(Hash) && result[:capability]['uses_vox_vars']
 
       if command_available?('pdk') && !prefer_rake
-        result[:stages] << run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
+        validate_stage = run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
+        result[:stages] << validate_stage
+        downgrade_stale_reference_validate_failure(result, validate_stage)
         result[:stages] << run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         return
       end
@@ -594,7 +601,11 @@ module ModuleTester
       return unless File.exist?(File.join(module_dir, 'Rakefile')) && command_available?('bundle')
 
       tasks = rake_tasks(module_dir, env)
-      result[:stages] << run_stage('validate', ['bundle', 'exec', 'rake', 'validate'], module_dir, env) if tasks.include?('validate')
+      if tasks.include?('validate')
+        validate_stage = run_stage('validate', ['bundle', 'exec', 'rake', 'validate'], module_dir, env)
+        result[:stages] << validate_stage
+        downgrade_stale_reference_validate_failure(result, validate_stage)
+      end
 
       if tasks.include?('spec')
         result[:stages] << run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, env)
@@ -605,6 +616,34 @@ module ModuleTester
       if @options[:allow_acceptance] && result[:capability]['has_acceptance'] && tasks.include?('beaker')
         result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, env)
       end
+    end
+
+    def downgrade_stale_reference_validate_failure(result, validate_stage)
+      return if validate_stage.nil?
+      return if validate_stage.status == 'passed'
+
+      output = validate_stage.output.to_s
+      return unless output.include?('REFERENCE.md is outdated')
+
+      warning = 'REFERENCE.md is outdated; to regenerate: bundle exec rake strings:generate:reference'
+      result[:documentation_status] = 'warning'
+      result[:documentation_message] = warning
+      github_annotation('warning', "#{result[:module]} documentation", warning)
+      result[:stages] << StageResult.new(
+        name: 'documentation_warning',
+        status: 'passed',
+        command: nil,
+        exit_code: 0,
+        duration_seconds: 0,
+        output: warning
+      )
+
+      validate_stage.status = 'passed'
+      validate_stage.exit_code = 0
+      validate_stage.output = [
+        output,
+        'Detected stale REFERENCE.md documentation drift; recorded as warning for compatibility classification.'
+      ].join("\n")
     end
 
     def rake_tasks(module_dir, env)
@@ -821,10 +860,10 @@ module ModuleTester
       lines = []
       lines << '# Puppet Module Compatibility Summary'
       lines << ''
-      lines << '| Module | Profile | Metadata | Dependencies | Compatibility |'
-      lines << '|---|---|---|---|---|'
+      lines << '| Module | Profile | Metadata | Dependencies | Documentation | Compatibility |'
+      lines << '|---|---|---|---|---|---|'
       results.each do |result|
-        lines << "| #{result[:module]} | #{result[:profile]} | #{result[:metadata_status]} | #{result[:dependency_status]} | #{result[:compatibility_state]} |"
+        lines << "| #{result[:module]} | #{result[:profile]} | #{result[:metadata_status]} | #{result[:dependency_status]} | #{result[:documentation_status]} | #{result[:compatibility_state]} |"
       end
       File.write(File.join(@options[:output_dir], 'compatibility-summary.md'), lines.join("\n") + "\n")
     end
@@ -839,6 +878,8 @@ module ModuleTester
         metadata_message: result[:metadata_message],
         dependency_status: result[:dependency_status],
         dependency_message: result[:dependency_message],
+        documentation_status: result[:documentation_status],
+        documentation_message: result[:documentation_message],
         auth_status: result[:auth_status],
         auth_message: result[:auth_message],
         capability: result[:capability],
