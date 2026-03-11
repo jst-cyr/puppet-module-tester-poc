@@ -13,7 +13,9 @@ def main() -> int:
         'class': 'failure',
         'compatibility_state': 'missing_report',
         'metadata_status': 'unknown',
+        'metadata_message': '',
         'dependency_status': 'unknown',
+        'dependency_message': '',
         'message': 'compatibility-report.json not found',
     }
 
@@ -24,6 +26,7 @@ def main() -> int:
         result = (parsed.get('results') or [{}])[0]
         state = result.get('compatibility_state', 'unknown')
         metadata = result.get('metadata_status', 'unknown')
+        metadata_message = result.get('metadata_message', '')
         dependency = result.get('dependency_status', 'none')
         dependency_message = result.get('dependency_message', '')
 
@@ -43,14 +46,20 @@ def main() -> int:
             'class': klass,
             'compatibility_state': state,
             'metadata_status': metadata,
+            'metadata_message': metadata_message,
             'dependency_status': dependency,
+            'dependency_message': dependency_message,
             'message': message,
         }
 
     with open(status_file, 'w', encoding='utf-8') as handle:
         json.dump(payload, handle, indent=2)
 
-    print(f"[{payload['id']}] {payload['class']}: {payload['message']}")
+    print(
+        f"[{payload['id']}] class={payload['class']} "
+        f"state={payload['compatibility_state']} "
+        f"metadata={payload['metadata_status']} dependency={payload['dependency_status']}"
+    )
     return 0
 
 

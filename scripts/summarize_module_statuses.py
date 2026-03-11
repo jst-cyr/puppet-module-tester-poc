@@ -31,6 +31,8 @@ def main() -> int:
             counts[row['class']] = counts.get(row['class'], 0) + 1
 
     rows.sort(key=lambda item: item['id'])
+    warning_rows = [row for row in rows if row['class'] == 'warning']
+    failure_rows = [row for row in rows if row['class'] == 'failure']
 
     with open(summary_path, 'a', encoding='utf-8') as summary:
         summary.write('# Compatibility Run Summary\n\n')
@@ -45,6 +47,28 @@ def main() -> int:
         summary.write(
             f"**Totals:** clean={counts.get('clean', 0)}, warning={counts.get('warning', 0)}, failure={counts.get('failure', 0)}\n"
         )
+
+        if warning_rows:
+            summary.write('\n## Warnings\n\n')
+            for row in warning_rows:
+                summary.write(f"- {row['id']}: {row['message']}\n")
+
+        if failure_rows:
+            summary.write('\n## Failures\n\n')
+            for row in failure_rows:
+                summary.write(f"- {row['id']}: {row['message']}\n")
+
+    if warning_rows:
+        print('Warnings detected:')
+        for row in warning_rows:
+            print(f"- {row['id']}: {row['message']}")
+            emit('warning', row['id'], row['message'])
+
+    if failure_rows:
+        print('Failures detected:')
+        for row in failure_rows:
+            print(f"- {row['id']}: {row['message']}")
+            emit('error', row['id'], row['message'])
 
     if counts.get('warning', 0) > 0:
         emit(

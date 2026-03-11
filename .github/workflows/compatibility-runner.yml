@@ -89,7 +89,7 @@ jobs:
             --workspace-dir workspace \
             --output-dir "results/${{ matrix.module.id }}"
 
-      - name: Classify module result
+      - name: Record module status
         if: always()
         shell: bash
         run: |
@@ -101,22 +101,15 @@ jobs:
           STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
           MODULE_ID: ${{ matrix.module.id }}
 
-      - name: Emit module annotation
+      - name: Write module summary
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          STATUS_FILE="results/${{ matrix.module.id }}/module-status.json"
-          CLASS=$(python3 -c "import json; print(json.load(open('${STATUS_FILE}', encoding='utf-8'))['class'])")
-          MESSAGE=$(python3 -c "import json; print(json.load(open('${STATUS_FILE}', encoding='utf-8'))['message'])")
-
-          if [ "$CLASS" = "failure" ]; then
-            echo "::error title=${{ matrix.module.id }}::$MESSAGE"
-          elif [ "$CLASS" = "warning" ]; then
-            echo "::warning title=${{ matrix.module.id }}::$MESSAGE"
-          else
-            echo "::notice title=${{ matrix.module.id }}::$MESSAGE"
-          fi
+          python3 scripts/render_module_job_summary.py
+        env:
+          STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
+          MODULE_ID: ${{ matrix.module.id }}
 
       - name: Upload module artifacts
         if: always()
@@ -131,6 +124,12 @@ jobs:
         shell: bash
         run: |
           echo "Runner failed for module: ${{ matrix.module.id }}"
+          echo "---- module-status.json ----"
+          if [ -f "results/${{ matrix.module.id }}/module-status.json" ]; then
+            cat "results/${{ matrix.module.id }}/module-status.json"
+          else
+            echo "module-status file not found"
+          fi
           echo "---- compatibility-summary.md ----"
           if [ -f "results/${{ matrix.module.id }}/compatibility-summary.md" ]; then
             cat "results/${{ matrix.module.id }}/compatibility-summary.md"
