@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/modules.schema.json",
+  "title": "Puppet Module Tester modules.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "modules"
+  ],
+  "properties": {
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(https://|git@).+"
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "os": {
+            "type": "string",
+            "enum": [
+              "ubuntu-latest",
+              "windows-latest",
+              "macos-latest"
+            ]
+          },
+          "prereqs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "apt": {
+                "$ref": "#/$defs/packageList"
+              },
+              "dnf": {
+                "$ref": "#/$defs/packageList"
+              },
+              "yum": {
+                "$ref": "#/$defs/packageList"
+              },
+              "apk": {
+                "$ref": "#/$defs/packageList"
+              },
+              "brew": {
+                "$ref": "#/$defs/packageList"
+              },
+              "choco": {
+                "$ref": "#/$defs/packageList"
+              },
+              "pacman": {
+                "$ref": "#/$defs/packageList"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "packageList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  }
+}

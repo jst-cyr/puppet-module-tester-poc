@@ -28,6 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate modules config schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check jsonschema
+          python3 scripts/validate_modules_config.py --config config/modules.json --schema config/modules.schema.json
+
       - name: Build module matrix
         id: matrix
         shell: bash

@@ -49,6 +49,8 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 
 Edit `config/modules.json`:
 
+For full instructions on adding modules and validating `modules.json` against schema, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ```json
 {
 	"modules": [
