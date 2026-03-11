@@ -129,6 +129,7 @@ module ModuleTester
 
         result[:capability] = discover_capabilities(module_dir)
         result[:metadata_status], result[:metadata_message] = evaluate_metadata(module_dir, profile.fetch('puppet_core_version'))
+        annotate_metadata_warning(result)
         result[:auth_status], result[:auth_message] = auth_status(profile.fetch('gem_source_mode'))
 
         if result[:auth_status] != 'ok'
@@ -161,6 +162,7 @@ module ModuleTester
         return finish_early(result) if stages_failed_since?(result, pre_stage_count)
 
         result[:compatibility_state] = resolve_state(result)
+        annotate_result_state(result)
         result
       ensure
         export_stage_logs(module_name, module_dir)
@@ -169,7 +171,46 @@ module ModuleTester
 
     def finish_early(result)
       result[:compatibility_state] = resolve_state(result)
+      annotate_result_state(result)
       result
+    end
+
+    def annotate_metadata_warning(result)
+      return if @options[:metadata_mode] == 'fail'
+      return if result[:metadata_status] == 'supported'
+
+      github_annotation('warning', "#{result[:module]} metadata", result[:metadata_message])
+    end
+
+    def annotate_result_state(result)
+      case result[:compatibility_state]
+      when 'compatible'
+        github_annotation('notice', result[:module], 'Compatibility run clean')
+      when 'conditionally_compatible'
+        details = []
+        details << result[:metadata_message] unless result[:metadata_message].to_s.empty?
+        details << result[:dependency_message] unless result[:dependency_message].to_s.empty?
+        message = details.empty? ? 'Compatibility run completed with warnings' : details.join(' | ')
+        github_annotation('warning', result[:module], message)
+      when 'not_compatible'
+        github_annotation('error', result[:module], 'Compatibility run found failures')
+      when 'harness_error'
+        github_annotation('error', result[:module], 'Harness/bootstrap failure during compatibility run')
+      end
+    end
+
+    def github_annotation(level, title, message)
+      return unless ENV.fetch('GITHUB_ACTIONS', '').downcase == 'true'
+
+      cleaned_title = title.to_s.gsub(/[\r\n]/, ' ').strip
+      cleaned_message = message.to_s.gsub(/[\r\n]/, ' ').strip
+      return if cleaned_message.empty?
+
+      puts "::#{level} title=#{escape_github_annotation(cleaned_title)}::#{escape_github_annotation(cleaned_message)}"
+    end
+
+    def escape_github_annotation(value)
+      value.to_s.gsub('%', '%25').gsub("\r", '%0D').gsub("\n", '%0A')
     end
 
     def new_result(module_name, ref, profile_name)
@@ -346,6 +387,7 @@ module ModuleTester
 
       result[:dependency_status] = 'warning'
       result[:dependency_message] = dependency_warning
+      github_annotation('warning', "#{result[:module]} dependency", dependency_warning)
       result[:stages] << StageResult.new(
         name: 'dependency_warning',
         status: 'passed',
