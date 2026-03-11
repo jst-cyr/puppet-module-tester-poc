@@ -18,6 +18,7 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 	- clone module repo/ref
 	- discover capabilities (`Gemfile`, `Rakefile`, `spec/`, acceptance assets)
 	- evaluate `metadata.json` Puppet requirement vs target profile
+	- detect dependency solver incompatibilities during bootstrap and log them as warnings
 	- enforce auth requirement for private artifact mode
 - Execution adapters:
 	- PDK-first: `pdk validate`, `pdk test unit`
@@ -28,6 +29,7 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 	- JUnit report: `results/.../compatibility-report.junit.xml`
 	- Markdown summary: `results/.../compatibility-summary.md`
 	- Stage logs per module: `results/.../artifacts/<module>/.stage-*.log`
+	- Per-module dependency status/message (`dependency_status`, `dependency_message`) in JSON report
 - GitHub Actions workflow with module matrix: `.github/workflows/compatibility-runner.yml`
 
 ## Quick start (local)
@@ -148,6 +150,7 @@ Recommended defaults for this POC:
 - Puppet Core source priority: community-accessible source usable by users who accepted EULA terms and have an API key.
 - Secret storage: GitHub Actions repository secrets.
 - Metadata mismatch handling: warning only (does not hard fail phase-1 compatibility).
+- Dependency solver incompatibility handling: warning + automatic retry with Puppet Core-oriented Gemfile constraints in the cloned workspace checkout.
 
 ## Operational notes
 

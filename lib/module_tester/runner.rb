@@ -22,6 +22,8 @@ module ModuleTester
     :started_at,
     :metadata_status,
     :metadata_message,
+    :dependency_status,
+    :dependency_message,
     :auth_status,
     :auth_message,
     :capability,
@@ -178,6 +180,8 @@ module ModuleTester
         started_at: Time.now.utc.iso8601,
         metadata_status: 'requires_manual_review',
         metadata_message: '',
+        dependency_status: 'none',
+        dependency_message: '',
         auth_status: 'ok',
         auth_message: '',
         capability: {},
@@ -332,7 +336,108 @@ module ModuleTester
         end
       end
 
-      result[:stages] << run_stage('bootstrap', ['bundle', 'install'], module_dir, env)
+      bootstrap_stage = run_stage('bootstrap', ['bundle', 'install'], module_dir, env)
+      result[:stages] << bootstrap_stage
+
+      return if bootstrap_stage.status == 'passed'
+
+      dependency_warning = extract_dependency_incompatibility_warning(bootstrap_stage.output)
+      return if dependency_warning.nil?
+
+      result[:dependency_status] = 'warning'
+      result[:dependency_message] = dependency_warning
+      result[:stages] << StageResult.new(
+        name: 'dependency_warning',
+        status: 'passed',
+        command: nil,
+        exit_code: 0,
+        duration_seconds: 0,
+        output: dependency_warning
+      )
+
+      patch_info = patch_module_gemfile_for_puppet_core(module_dir)
+      result[:stages] << StageResult.new(
+        name: 'bootstrap_dependency_patch',
+        status: patch_info[:changed] ? 'passed' : 'failed',
+        command: nil,
+        exit_code: patch_info[:changed] ? 0 : 1,
+        duration_seconds: 0,
+        output: patch_info[:message]
+      )
+      return unless patch_info[:changed]
+
+      retry_stage = run_stage('bootstrap_puppet_core_retry', ['bundle', 'install'], module_dir, env)
+      result[:stages] << retry_stage
+      return unless retry_stage.status == 'passed'
+
+      bootstrap_stage.status = 'passed'
+      bootstrap_stage.exit_code = 0
+      bootstrap_stage.output = [bootstrap_stage.output.to_s, 'Recovered by applying Puppet Core-compatible gem constraints and retrying bundle install.'].join("\n")
+    end
+
+    def extract_dependency_incompatibility_warning(output)
+      text = output.to_s
+      return nil unless text.include?('Could not find compatible versions') || text.include?('version solving has failed')
+
+      return nil unless text.match?(/depends on puppet-resource_api/i)
+
+      'Dependency incompatibility detected during bundle install; applying Puppet Core-compatible gem constraints and retrying.'
+    end
+
+    def patch_module_gemfile_for_puppet_core(module_dir)
+      gemfile_path = File.join(module_dir, 'Gemfile')
+      return { changed: false, message: 'Gemfile not found; cannot apply Puppet Core dependency fallback.' } unless File.exist?(gemfile_path)
+
+      original = File.read(gemfile_path)
+      updated = original.dup
+      changes = []
+
+      replacements = {
+        'voxpupuli-release' => '~> 5.2',
+        'openvox-strings' => '< 6.1.0',
+        'openvox' => '< 8.24',
+        'puppet-resource_api' => '~> 1.9'
+      }
+
+      replacements.each do |gem_name, requirement|
+        updated, changed = force_gem_requirement(updated, gem_name, requirement)
+        changes << "#{gem_name}=#{requirement}" if changed
+      end
+
+      if !updated.include?("gem 'puppet-resource_api'") && !updated.include?("gem \"puppet-resource_api\"")
+        updated << "\n# Added by compatibility harness for Puppet Core dependency resolution\ngem 'puppet-resource_api', '~> 1.9'\n"
+        changes << 'puppet-resource_api=~> 1.9 (added)'
+      end
+
+      return { changed: false, message: 'No compatible Gemfile overrides could be applied.' } if updated == original
+
+      backup_path = File.join(module_dir, 'Gemfile.before-puppet-core-compat')
+      File.write(backup_path, original)
+      File.write(gemfile_path, updated)
+
+      {
+        changed: true,
+        message: "Applied Puppet Core Gemfile overrides: #{changes.join(', ')}"
+      }
+    rescue StandardError => e
+      { changed: false, message: "Failed to patch Gemfile for Puppet Core fallback: #{e.message}" }
+    end
+
+    def force_gem_requirement(content, gem_name, requirement)
+      changed = false
+      pattern = /^\s*gem\s+['\"]#{Regexp.escape(gem_name)}['\"](?:\s*,\s*([^\n#]+))?/m
+
+      updated = content.gsub(pattern) do |line|
+        new_line = if line.match?(/,\s*['\"][^'\"]+['\"]/)
+                     line.sub(/,\s*['\"][^'\"]+['\"]/m, ", '#{requirement}'")
+                   else
+                     line.sub(/(['\"]#{Regexp.escape(gem_name)}['\"])/, "\\1, '#{requirement}'")
+                   end
+        changed ||= (new_line != line)
+        new_line
+      end
+
+      [updated, changed]
     end
 
     def enforce_runtime_guardrails(module_dir, env, result, profile)
@@ -590,6 +695,8 @@ module ModuleTester
           bundle_config_multisource
           bundle_config_source
           bootstrap
+          bootstrap_dependency_patch
+          bootstrap_puppet_core_retry
           rake_tasks
           pdk_version
         ].include?(stage.name)
@@ -672,10 +779,10 @@ module ModuleTester
       lines = []
       lines << '# Puppet Module Compatibility Summary'
       lines << ''
-      lines << '| Module | Profile | Metadata | Compatibility |'
-      lines << '|---|---|---|---|'
+      lines << '| Module | Profile | Metadata | Dependencies | Compatibility |'
+      lines << '|---|---|---|---|---|'
       results.each do |result|
-        lines << "| #{result[:module]} | #{result[:profile]} | #{result[:metadata_status]} | #{result[:compatibility_state]} |"
+        lines << "| #{result[:module]} | #{result[:profile]} | #{result[:metadata_status]} | #{result[:dependency_status]} | #{result[:compatibility_state]} |"
       end
       File.write(File.join(@options[:output_dir], 'compatibility-summary.md'), lines.join("\n") + "\n")
     end
@@ -688,6 +795,8 @@ module ModuleTester
         started_at: result[:started_at],
         metadata_status: result[:metadata_status],
         metadata_message: result[:metadata_message],
+        dependency_status: result[:dependency_status],
+        dependency_message: result[:dependency_message],
         auth_status: result[:auth_status],
         auth_message: result[:auth_message],
         capability: result[:capability],
