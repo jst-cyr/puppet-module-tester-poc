@@ -4,3 +4,7 @@ vendor/bundle/
 .puppet-module-tester.local.yml
 results/
 workspace/
+
+# Python bytecode/cache artifacts
+__pycache__/
+*.py[cod]
