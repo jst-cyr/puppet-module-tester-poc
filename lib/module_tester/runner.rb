@@ -181,7 +181,7 @@ module ModuleTester
       return if @options[:metadata_mode] == 'fail'
       return if result[:metadata_status] == 'supported'
 
-      github_annotation('warning', "#{result[:module]} metadata", result[:metadata_message])
+      github_annotation('notice', "#{result[:module]} metadata", result[:metadata_message])
     end
 
     def annotate_result_state(result)
