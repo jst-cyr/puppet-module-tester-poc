@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          MATRIX=$(ruby -rjson -e "raw='${{ github.event.inputs.modules_json }}'.strip; modules=raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules',[]) : JSON.parse(raw); out=modules.map{|m| repo=m.fetch('repo'); ref=m.fetch('ref','main'); id=(m['id'] || repo.sub(%r{/$},'').split('/').last.sub(/\\.git$/,'').gsub(/[^a-zA-Z0-9_.-]+/,'-')); {'repo'=>repo,'ref'=>ref,'id'=>id}}; puts JSON.generate(out)")
+          MATRIX=$(ruby -rjson -e "raw='${{ github.event.inputs.modules_json }}'.strip; modules=raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules',[]) : JSON.parse(raw); out=modules.map{|m| repo=m.fetch('repo'); ref=m.fetch('ref','main'); id=(m['id'] || repo.sub(%r{/$},'').split('/').last.sub(/\.git$/,'').gsub(/[^a-zA-Z0-9_.-]+/,'-')); prereqs=m.fetch('prereqs',{}); {'repo'=>repo,'ref'=>ref,'id'=>id,'prereqs'=>prereqs}}; puts JSON.generate(out)")
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   test:
@@ -66,6 +66,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install module prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python3 -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('apt',[]); print(' '.join(pkgs)) if pkgs else None")
+          if [ -n "$apt_pkgs" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y $apt_pkgs
+          fi
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
