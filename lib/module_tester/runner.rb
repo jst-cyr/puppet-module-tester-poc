@@ -594,7 +594,9 @@ module ModuleTester
         validate_stage = run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << validate_stage
         downgrade_stale_reference_validate_failure(result, validate_stage)
-        result[:stages] << run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
+        unit_stage = run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
+        result[:stages] << unit_stage
+        downgrade_puppet_server_default_unit_failure(result, unit_stage)
         return
       end
 
@@ -608,14 +610,59 @@ module ModuleTester
       end
 
       if tasks.include?('spec')
-        result[:stages] << run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, env)
+        unit_stage = run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, env)
+        result[:stages] << unit_stage
+        downgrade_puppet_server_default_unit_failure(result, unit_stage)
       elsif tasks.include?('test')
-        result[:stages] << run_stage('unit', ['bundle', 'exec', 'rake', 'test'], module_dir, env)
+        unit_stage = run_stage('unit', ['bundle', 'exec', 'rake', 'test'], module_dir, env)
+        result[:stages] << unit_stage
+        downgrade_puppet_server_default_unit_failure(result, unit_stage)
       end
 
       if @options[:allow_acceptance] && result[:capability]['has_acceptance'] && tasks.include?('beaker')
         result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, env)
       end
+    end
+
+    def downgrade_puppet_server_default_unit_failure(result, unit_stage)
+      return if unit_stage.nil?
+      return if unit_stage.status == 'passed'
+
+      output = unit_stage.output.to_s
+
+      # Detect the specific Puppet 8.12 breaking change: the default value of the
+      # 'server' setting changed from 'puppet' to '' (empty string).
+      # Unit specs that hardcode the old default produce exactly this diff pattern.
+      # See: https://help.puppet.com/core/current/Content/PuppetCore/PuppetReleaseNotes/release_notes_puppet_x-8-12-0.htm
+      return unless output.include?('"server"=>"puppet"') && output.include?('"server"=>""')
+
+      # Only downgrade when this is the sole rspec failure — don't mask unrelated failures.
+      return if output.scan(/::error /).count > 1
+
+      warning = 'Unit spec asserts the Puppet "server" setting default is "puppet", but Puppet Core 8.12+ ' \
+                'changed this default to "" (empty string). The spec must be updated to reflect the ' \
+                'new Puppet 8.12 behaviour. ' \
+                'See: https://help.puppet.com/core/current/Content/PuppetCore/PuppetReleaseNotes/release_notes_puppet_x-8-12-0.htm'
+
+      result[:dependency_status] = 'warning'
+      result[:dependency_message] = warning
+      github_annotation('warning', "#{result[:module]} Puppet 8.12 server default", warning)
+
+      result[:stages] << StageResult.new(
+        name: 'puppet_server_default_warning',
+        status: 'passed',
+        command: nil,
+        exit_code: 0,
+        duration_seconds: 0,
+        output: warning
+      )
+
+      unit_stage.status = 'passed'
+      unit_stage.exit_code = 0
+      unit_stage.output = [
+        output,
+        'Detected Puppet Core 8.12 server setting default change; unit failure downgraded to compatibility warning.'
+      ].join("\n")
     end
 
     def downgrade_stale_reference_validate_failure(result, validate_stage)
@@ -790,6 +837,8 @@ module ModuleTester
       metadata_mismatch = result[:metadata_status] != 'supported'
       return 'not_compatible' if metadata_mismatch && @options[:metadata_mode] == 'fail'
       return 'conditionally_compatible' if metadata_mismatch
+      return 'conditionally_compatible' if result[:dependency_status] == 'warning'
+      return 'conditionally_compatible' if result[:documentation_status] == 'warning'
       return 'inconclusive' if result[:stages].empty?
 
       'compatible'
