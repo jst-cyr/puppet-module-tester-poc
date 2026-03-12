@@ -33,6 +33,7 @@ def main() -> int:
     rows.sort(key=lambda item: item['id'])
     warning_rows = [row for row in rows if row['class'] == 'warning']
     failure_rows = [row for row in rows if row['class'] == 'failure']
+    metadata_mismatch_rows = [row for row in rows if row.get('metadata_status') != 'supported']
 
     with open(summary_path, 'a', encoding='utf-8') as summary:
         summary.write('# Compatibility Run Summary\n\n')
@@ -47,6 +48,9 @@ def main() -> int:
         summary.write(
             f"**Totals:** clean={counts.get('clean', 0)}, warning={counts.get('warning', 0)}, failure={counts.get('failure', 0)}\n"
         )
+
+        if metadata_mismatch_rows:
+            summary.write(f'\n**Metadata Notices:** {len(metadata_mismatch_rows)} module(s) have metadata mismatches (see notices for details)\n')
 
         if warning_rows:
             summary.write('\n## Warnings\n\n')
