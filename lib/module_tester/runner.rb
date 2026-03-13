@@ -708,7 +708,11 @@ module ModuleTester
 
       # Guard against masking multiple failing examples.
       return false unless output.scan('Failure/Error:').count == 1
-      return false unless output.scan(/::error\b/).count == 1
+
+      # In GitHub output we expect one ::error record, but do not require it
+      # for other formatters (local runs, alternate CI output adapters).
+      github_error_count = output.scan(/::error\b/).count
+      return false if github_error_count > 1
 
       removed, added = extract_single_diff_replacement_pair(output)
       return false if removed.nil? || added.nil?
@@ -722,15 +726,17 @@ module ModuleTester
       diff_tail = output.split('Diff:', 2)[1]
       return [nil, nil] if diff_tail.nil?
 
-      diff_body = diff_tail.split("\n\nCoverage Report:", 2)[0]
+      diff_body = diff_tail.split(/\n\n(?:Coverage Report:|Randomized with seed|Finished in|$)/, 2)[0].to_s
       lines = diff_body.to_s.lines.map(&:rstrip)
 
-      removed = lines.select { |line| line.start_with?('-') && !line.start_with?('---') }
-      added = lines.select { |line| line.start_with?('+') && !line.start_with?('+++') }
+      removed = lines.select { |line| line.match?(/^\s*-(?!-)/) }
+      added = lines.select { |line| line.match?(/^\s*\+(?!\+)/) }
 
       return [nil, nil] unless removed.count == 1 && added.count == 1
 
-      [removed.first.sub(/^-/, '').strip, added.first.sub(/^\+/, '').strip]
+      normalized_removed = removed.first.sub(/^\s*-\s?/, '').strip
+      normalized_added = added.first.sub(/^\s*\+\s?/, '').strip
+      [normalized_removed, normalized_added]
     end
 
     def normalize_server_default_diff_line(line)
