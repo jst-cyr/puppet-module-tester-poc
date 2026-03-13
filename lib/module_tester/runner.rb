@@ -630,14 +630,9 @@ module ModuleTester
 
       output = unit_stage.output.to_s
 
-      # Detect the specific Puppet 8.12 breaking change: the default value of the
-      # 'server' setting changed from 'puppet' to '' (empty string).
-      # Unit specs that hardcode the old default produce exactly this diff pattern.
-      # See: https://help.puppet.com/core/current/Content/PuppetCore/PuppetReleaseNotes/release_notes_puppet_x-8-12-0.htm
-      return unless output.include?('"server"=>"puppet"') && output.include?('"server"=>""')
-
-      # Only downgrade when this is the sole rspec failure — don't mask unrelated failures.
-      return if output.scan(/::error /).count > 1
+      # Only downgrade the known Puppet 8.12 server-default change when it is the
+      # sole unit-failure signal and the diff changes only the server value.
+      return unless strict_puppet_server_default_only_failure?(output)
 
       warning = 'Unit spec asserts the Puppet "server" setting default is "puppet", but Puppet Core 8.12+ ' \
                 'changed this default to "" (empty string). The spec must be updated to reflect the ' \
@@ -663,6 +658,41 @@ module ModuleTester
         output,
         'Detected Puppet Core 8.12 server setting default change; unit failure downgraded to compatibility warning.'
       ].join("\n")
+    end
+
+    def strict_puppet_server_default_only_failure?(raw_output)
+      output = CGI.unescape(raw_output.to_s)
+
+      # Guard against masking multiple failing examples.
+      return false unless output.scan('Failure/Error:').count == 1
+      return false unless output.scan(/::error\b/).count == 1
+
+      removed, added = extract_single_diff_replacement_pair(output)
+      return false if removed.nil? || added.nil?
+      return false unless removed.include?('"server"=>"puppet"')
+      return false unless added.include?('"server"=>""')
+
+      normalize_server_default_diff_line(removed) == normalize_server_default_diff_line(added)
+    end
+
+    def extract_single_diff_replacement_pair(output)
+      diff_tail = output.split('Diff:', 2)[1]
+      return [nil, nil] if diff_tail.nil?
+
+      diff_body = diff_tail.split("\n\nCoverage Report:", 2)[0]
+      lines = diff_body.to_s.lines.map(&:rstrip)
+
+      removed = lines.select { |line| line.start_with?('-') && !line.start_with?('---') }
+      added = lines.select { |line| line.start_with?('+') && !line.start_with?('+++') }
+
+      return [nil, nil] unless removed.count == 1 && added.count == 1
+
+      [removed.first.sub(/^-/, '').strip, added.first.sub(/^\+/, '').strip]
+    end
+
+    def normalize_server_default_diff_line(line)
+      line.gsub('"server"=>"puppet"', '"server"=>"<SERVER_DEFAULT>"')
+          .gsub('"server"=>""', '"server"=>"<SERVER_DEFAULT>"')
     end
 
     def downgrade_stale_reference_validate_failure(result, validate_stage)
