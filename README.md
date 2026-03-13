@@ -43,6 +43,10 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 
 	 `ruby bin/puppet-module-tester --modules-file config/modules.json --profiles-file profiles/puppet_profiles.json --profile 8-latest-maintained --metadata-mode warn --workspace-dir workspace --output-dir results/local`
 
+	 Optional: limit run to selected modules (by `id`, repo URL, repo name, or slug):
+
+	 `ruby bin/puppet-module-tester --modules-file config/modules.json --profiles-file profiles/puppet_profiles.json --profile 8-latest-maintained --modules puppet-nginx,puppet-yum`
+
 4. Review reports in `results/local`.
 
 ## Configure target modules
@@ -61,6 +65,13 @@ For full instructions on adding modules and validating `modules.json` against sc
 	]
 }
 ```
+
+To run only a subset without editing `config/modules.json`, use either:
+
+- `--module <selector>` (repeatable)
+- `--modules <selector1,selector2,...>`
+
+If no module selector is provided, the runner tests all configured modules.
 
 ## Configure compatibility profiles
 

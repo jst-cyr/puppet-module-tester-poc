@@ -4,6 +4,17 @@ require 'yaml'
 
 cfg = YAML.load_file('.puppet-module-tester.local.yml') || {}
 
+def normalize_module_selectors(value)
+  case value
+  when Array
+    value
+  when String
+    value.split(',')
+  else
+    []
+  end.map(&:to_s).map(&:strip).reject(&:empty?).uniq
+end
+
 ENV['PUPPET_CORE_API_KEY'] = cfg['puppet_core_api_key'].to_s
 ENV['PUPPET_CORE_SOURCE_URL'] = cfg['puppet_core_source_url'].to_s
 ENV['PUPPET_CORE_AUTH_HEADER'] = cfg['puppet_core_auth_header'].to_s
@@ -23,7 +34,9 @@ workspace_dir = 'C:/Temp/pmt-workspace' if workspace_dir.empty?
 output_dir = cfg['puppet_compat_output_dir'].to_s
 output_dir = 'results/local' if output_dir.empty?
 
-exec(
+module_selectors = normalize_module_selectors(cfg['puppet_compat_modules'])
+
+command = [
   'ruby',
   'bin/puppet-module-tester',
   '--modules-file',
@@ -36,4 +49,11 @@ exec(
   workspace_dir,
   '--output-dir',
   output_dir
-)
+]
+
+unless module_selectors.empty?
+  command << '--modules'
+  command << module_selectors.join(',')
+end
+
+exec(*command)

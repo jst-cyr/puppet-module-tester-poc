@@ -62,10 +62,14 @@ puppet_core_source_url: "https://rubygems-puppetcore.puppet.com"
 puppet_core_auth_header: "X-Api-Key"
 puppet_compat_metadata_mode: "warn"
 puppet_compat_target: "8-latest-maintained"
+puppet_compat_modules: ["puppet-nginx", "puppet-yum"]
 puppet_compat_workspace_dir: "C:/Temp/pmt-workspace"
 puppet_compat_bundle_path: "C:/Temp/pmt-bundle"
 puppet_compat_output_dir: "results/local"
 ```
+
+`puppet_compat_modules` is optional. If omitted, all modules from `config/modules.json` are tested.
+Selectors can be module `id`, repo URL, repo name, or slug.
 
 Never commit this file.
 

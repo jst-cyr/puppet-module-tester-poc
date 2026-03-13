@@ -45,7 +45,8 @@ module ModuleTester
       workspace_dir: 'workspace',
       output_dir: 'results',
       metadata_mode: ENV.fetch('PUPPET_COMPAT_METADATA_MODE', 'warn'),
-      allow_acceptance: false
+      allow_acceptance: false,
+      module_filters: []
     }.freeze
 
     def initialize(argv)
@@ -91,6 +92,10 @@ module ModuleTester
     def parse_options!
       OptionParser.new do |opts|
         opts.on('--modules-file PATH') { |v| @options[:modules_file] = v }
+        opts.on('--module SELECTOR', 'Limit to one module selector (repeatable)') { |v| @options[:module_filters] << v }
+        opts.on('--modules LIST', 'Comma-separated list of module selectors') do |v|
+          @options[:module_filters].concat(v.to_s.split(',').map(&:strip).reject(&:empty?))
+        end
         opts.on('--profiles-file PATH') { |v| @options[:profiles_file] = v }
         opts.on('--profile NAME') { |v| @options[:profile] = v }
         opts.on('--workspace-dir PATH') { |v| @options[:workspace_dir] = v }
@@ -109,9 +114,47 @@ module ModuleTester
 
     def load_modules(path)
       payload = JSON.parse(File.read(path))
-      payload.fetch('modules', []).map do |item|
-        { 'repo' => item.fetch('repo'), 'ref' => item.fetch('ref', 'main') }
+      modules = payload.fetch('modules', []).map do |item|
+        repo = item.fetch('repo')
+        {
+          'id' => item['id'],
+          'repo' => repo,
+          'ref' => item.fetch('ref', 'main'),
+          'slug' => slugify_repo(repo)
+        }
       end
+
+      selectors = @options[:module_filters].map { |value| normalize_selector(value) }.reject(&:empty?).uniq
+      return modules if selectors.empty?
+
+      selected = modules.select do |mod|
+        identifiers = module_selectors_for(mod)
+        selectors.any? { |selector| identifiers.include?(selector) }
+      end
+
+      missing = selectors.reject do |selector|
+        modules.any? { |mod| module_selectors_for(mod).include?(selector) }
+      end
+
+      unless missing.empty?
+        known = modules.flat_map { |mod| module_selectors_for(mod) }.uniq.sort
+        raise "Unknown module selector(s): #{missing.join(', ')}. Known selectors include: #{known.join(', ')}"
+      end
+
+      selected
+    end
+
+    def module_selectors_for(mod)
+      selectors = [mod['id'], mod['repo'], mod['slug'], repo_basename(mod['repo'])]
+      selectors.map { |value| normalize_selector(value) }.reject(&:empty?).uniq
+    end
+
+    def repo_basename(repo_url)
+      repo_url.to_s.sub(%r{/$}, '').split('/').last.to_s.sub(/\.git$/, '')
+    end
+
+    def normalize_selector(value)
+      value.to_s.strip.downcase
     end
 
     def run_module(mod, profile)
