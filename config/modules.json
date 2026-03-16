@@ -21,6 +21,18 @@
       }
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-augeasproviders_shellvar",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "libaugeas-dev",
+          "augeas-tools",
+          "pkg-config",
+          "build-essential"
+        ]
+      }
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-cron",
       "ref": "master"
     },
