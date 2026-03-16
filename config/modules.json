@@ -37,6 +37,10 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-confluence",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-cron",
       "ref": "master"
     },
