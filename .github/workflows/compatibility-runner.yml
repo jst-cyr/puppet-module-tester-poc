@@ -1,6 +1,8 @@
 name: Puppet Module Compatibility Runner
 
 on:
+  schedule:
+    - cron: "0 2 * * *"  # Nightly at 02:00 UTC
   workflow_dispatch:
     inputs:
       profile:
