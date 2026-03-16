@@ -33,6 +33,10 @@
       }
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-chrony",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-cron",
       "ref": "master"
     },
