@@ -49,6 +49,10 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-dnsquery",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-epel",
       "ref": "master"
     },
