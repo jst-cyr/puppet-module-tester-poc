@@ -45,6 +45,10 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-corosync",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-epel",
       "ref": "master"
     },
