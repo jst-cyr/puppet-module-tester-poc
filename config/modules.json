@@ -53,6 +53,14 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-elastic_stack",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-elasticsearch",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-epel",
       "ref": "master"
     },
