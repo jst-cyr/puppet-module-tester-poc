@@ -64,6 +64,7 @@ jobs:
       PUPPET_CORE_API_KEY: ${{ secrets.PUPPET_CORE_API_KEY }}
       PUPPET_CORE_SOURCE_URL: https://rubygems-puppetcore.puppet.com
       PUPPET_COMPAT_METADATA_MODE: ${{ github.event.inputs.metadata_mode || 'warn' }}
+      PUPPET_COMPAT_BUNDLE_PATH: .b
       PUPPET_ENFORCE_PRIVATE_SOURCE: "true"
       PUPPET_ENFORCE_NO_OPENVOX: "false"
       PUPPET_ENFORCE_EXACT_PUPPET_VERSION: "true"
@@ -73,6 +74,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Enable Git long paths on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          git config --global --get core.longpaths
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -137,19 +145,41 @@ jobs:
             --modules-file .tmp/single-module.json \
             --profiles-file profiles/puppet_profiles.json \
             --profile "${{ github.event.inputs.profile || '8-latest-maintained' }}" \
-            --workspace-dir workspace \
-            --output-dir "results/${{ matrix.module.id }}"
+            --workspace-dir w \
+            --output-dir "o/${{ matrix.module.id }}"
+
+      - name: Windows path diagnostics
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $workspaceRoot = (Get-Location).Path
+          $moduleRoot = Join-Path $workspaceRoot "w/modules/${{ matrix.module.id }}"
+          Write-Host "workspace_root=$workspaceRoot"
+          Write-Host "workspace_root_len=$($workspaceRoot.Length)"
+          Write-Host "module_root=$moduleRoot"
+          Write-Host "module_root_len=$($moduleRoot.Length)"
+          $longPathsEnabled = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
+          Write-Host "LongPathsEnabled=$longPathsEnabled"
+          if (Test-Path $moduleRoot) {
+            $longest = Get-ChildItem -Path $moduleRoot -Recurse -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -ne $null } |
+              Sort-Object { $_.FullName.Length } -Descending |
+              Select-Object -First 5
+            foreach ($item in $longest) {
+              Write-Host ("path_len=" + $item.FullName.Length + " path=" + $item.FullName)
+            }
+          }
 
       - name: Record module status
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "results/${{ matrix.module.id }}"
+          mkdir -p "o/${{ matrix.module.id }}"
           python scripts/classify_module_result.py
         env:
-          REPORT: results/${{ matrix.module.id }}/compatibility-report.json
-          STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
+          REPORT: o/${{ matrix.module.id }}/compatibility-report.json
+          STATUS_FILE: o/${{ matrix.module.id }}/module-status.json
           MODULE_ID: ${{ matrix.module.id }}
 
       - name: Write module summary
@@ -159,7 +189,7 @@ jobs:
           set -euo pipefail
           python scripts/render_module_job_summary.py
         env:
-          STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
+          STATUS_FILE: o/${{ matrix.module.id }}/module-status.json
           MODULE_ID: ${{ matrix.module.id }}
 
       - name: Upload module artifacts
@@ -167,7 +197,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compatibility-${{ matrix.module.id }}
-          path: results/${{ matrix.module.id }}
+          path: o/${{ matrix.module.id }}
           if-no-files-found: warn
 
       - name: Show failure diagnostics
@@ -176,20 +206,20 @@ jobs:
         run: |
           echo "Runner failed for module: ${{ matrix.module.id }}"
           echo "---- module-status.json ----"
-          if [ -f "results/${{ matrix.module.id }}/module-status.json" ]; then
-            cat "results/${{ matrix.module.id }}/module-status.json"
+          if [ -f "o/${{ matrix.module.id }}/module-status.json" ]; then
+            cat "o/${{ matrix.module.id }}/module-status.json"
           else
             echo "module-status file not found"
           fi
           echo "---- compatibility-summary.md ----"
-          if [ -f "results/${{ matrix.module.id }}/compatibility-summary.md" ]; then
-            cat "results/${{ matrix.module.id }}/compatibility-summary.md"
+          if [ -f "o/${{ matrix.module.id }}/compatibility-summary.md" ]; then
+            cat "o/${{ matrix.module.id }}/compatibility-summary.md"
           else
             echo "summary file not found"
           fi
           echo "---- compatibility-report.json (first 200 lines) ----"
-          if [ -f "results/${{ matrix.module.id }}/compatibility-report.json" ]; then
-            sed -n '1,200p' "results/${{ matrix.module.id }}/compatibility-report.json"
+          if [ -f "o/${{ matrix.module.id }}/compatibility-report.json" ]; then
+            sed -n '1,200p' "o/${{ matrix.module.id }}/compatibility-report.json"
           else
             echo "report file not found"
           fi
