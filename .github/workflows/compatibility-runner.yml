@@ -116,6 +116,13 @@ jobs:
           ruby-version: '3.2'
           bundler-cache: true
 
+      - name: Enable Windows long path support
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force | Out-Null
+          Write-Host "Windows long path support enabled"
+
       - name: Install runner
         run: |
           bundle install
