@@ -14,7 +14,7 @@ on:
         required: false
         default: "warn"
       modules_json:
-        description: "Optional JSON array override: [{\"repo\":\"...\",\"ref\":\"main\"}]"
+        description: "Optional JSON array override: [{\"repo\":\"...\",\"ref\":\"main\",\"os\":\"windows-latest\"}]"
         required: false
         default: ""
 
@@ -30,24 +30,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Validate modules config schema
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check jsonschema
-          python3 scripts/validate_modules_config.py --config config/modules.json --schema config/modules.schema.json
+          python -m pip install --disable-pip-version-check jsonschema
+          python scripts/validate_modules_config.py --config config/modules.json --schema config/modules.schema.json
 
       - name: Build module matrix
         id: matrix
         shell: bash
         run: |
           set -euo pipefail
-          MATRIX=$(ruby -rjson -e "raw='${{ github.event.inputs.modules_json }}'.strip; modules=raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules',[]) : JSON.parse(raw); out=modules.map{|m| repo=m.fetch('repo'); ref=m.fetch('ref','main'); id=(m['id'] || repo.sub(%r{/$},'').split('/').last.sub(/\.git$/,'').gsub(/[^a-zA-Z0-9_.-]+/,'-')); prereqs=m.fetch('prereqs',{}); {'repo'=>repo,'ref'=>ref,'id'=>id,'prereqs'=>prereqs}}; puts JSON.generate(out)")
+          MATRIX=$(ruby -rjson -e "raw='${{ github.event.inputs.modules_json }}'.strip; modules=raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules',[]) : JSON.parse(raw); out=modules.map{|m| repo=m.fetch('repo'); ref=m.fetch('ref','main'); id=(m['id'] || repo.sub(%r{/$},'').split('/').last.sub(/\.git$/,'').gsub(/[^a-zA-Z0-9_.-]+/,'-')); os=m.fetch('os','ubuntu-latest'); prereqs=m.fetch('prereqs',{}); {'repo'=>repo,'ref'=>ref,'id'=>id,'os'=>os,'prereqs'=>prereqs}}; puts JSON.generate(out)")
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   test:
     name: test / ${{ matrix.module.id }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.module.os }}
     timeout-minutes: ${{ fromJSON(vars.PUPPET_JOB_TIMEOUT_MINUTES || '360') }}
     needs: prepare
     strategy:
@@ -69,14 +74,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install module prerequisites
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install module prerequisites on Ubuntu
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
-          apt_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python3 -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('apt',[]); print(' '.join(pkgs)) if pkgs else None")
+          apt_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('apt',[]); print(' '.join(pkgs)) if pkgs else None")
           if [ -n "$apt_pkgs" ]; then
             sudo apt-get update -qq
             sudo apt-get install -y $apt_pkgs
+          fi
+
+      - name: Install module prerequisites on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $prereqs = '${{ toJson(matrix.module.prereqs) }}' | ConvertFrom-Json
+          if ($null -ne $prereqs -and $null -ne $prereqs.choco -and $prereqs.choco.Count -gt 0) {
+            choco install -y @($prereqs.choco)
+          }
+
+      - name: Install module prerequisites on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('brew',[]); print(' '.join(pkgs)) if pkgs else None")
+          if [ -n "$brew_pkgs" ]; then
+            brew update
+            brew install $brew_pkgs
           fi
 
       - name: Set up Ruby
@@ -114,7 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "results/${{ matrix.module.id }}"
-          python3 scripts/classify_module_result.py
+          python scripts/classify_module_result.py
         env:
           REPORT: results/${{ matrix.module.id }}/compatibility-report.json
           STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
@@ -125,7 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/render_module_job_summary.py
+          python scripts/render_module_job_summary.py
         env:
           STATUS_FILE: results/${{ matrix.module.id }}/module-status.json
           MODULE_ID: ${{ matrix.module.id }}
@@ -171,6 +202,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Download module artifacts
         uses: actions/download-artifact@v4
         with:
@@ -182,6 +218,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/summarize_module_statuses.py
+          python scripts/summarize_module_statuses.py
         env:
           STATUS_ROOT: all-artifacts

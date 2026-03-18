@@ -90,10 +90,12 @@
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-windows_firewall",
+      "os": "windows-latest",
       "ref": "master"
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-windowsfeature",
+      "os": "windows-latest",
       "ref": "master"
     },
     {

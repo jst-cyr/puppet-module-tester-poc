@@ -32,6 +32,8 @@ Example with optional fields:
 }
 ```
 
+Use `os` for modules that require a specific GitHub Actions runner, such as Windows-only modules. If omitted, the workflow defaults to `ubuntu-latest`.
+
 ## Validate modules.json against schema
 
 Schema file: [config/modules.schema.json](config/modules.schema.json)
@@ -81,7 +83,7 @@ Field definitions for each module item:
 - `repo` (required, string): Git repository URL. Must start with `https://` or `git@`.
 - `ref` (optional, string): Branch, tag, or commit-ish to clone. Defaults to `main` in runner logic when omitted.
 - `id` (optional, string): Stable identifier for reporting/artifacts. Allowed characters: letters, numbers, `_`, `.`, `-`.
-- `os` (optional, string): Allowed values are `ubuntu-latest`, `windows-latest`, `macos-latest`.
+- `os` (optional, string): Allowed values are `ubuntu-latest`, `windows-latest`, `macos-latest`. The workflow uses this to choose `runs-on`. Defaults to `ubuntu-latest` when omitted.
 - `prereqs` (optional, object): Package-manager specific prerequisites.
 
 `prereqs` subfields (each optional):
