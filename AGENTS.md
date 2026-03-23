@@ -17,13 +17,14 @@ This file is for coding agents working in this repository.
 
 ## Module Addition Workflow (Agent)
 
-1. Add a module object under `modules` in `config/modules.json`.
-2. Set `repo` (required), optionally `ref`, `id`, `os`, and `prereqs`.
-3. Default behavior when omitted:
+1. Inspect the target module repository first (do not skip this step).
+2. Add a module object under `modules` in `config/modules.json`.
+3. Set `repo` (required), optionally `ref`, `id`, `os`, and `prereqs`.
+4. Default behavior when omitted:
    - `ref`: treated as `main` by runner logic.
    - `os`: defaults to `ubuntu-latest` in workflow behavior.
    - `id`: derived from repo name.
-4. Validate against schema before proposing completion.
+5. Validate against schema before proposing completion.
 
 ## Decision Rules
 
@@ -31,10 +32,42 @@ This file is for coding agents working in this repository.
 - Use `windows-latest` for Windows-only modules/providers.
 - Use `macos-latest` only when explicitly required.
 - Omit `os` for general modules to keep Ubuntu as default.
-- Add `prereqs` only when requirements are known and verifiable.
 - Do not guess system package prerequisites.
-- If requirements are unclear, omit `prereqs` first and use failing logs to guide follow-up.
+- Determine `prereqs` from repository evidence before finalizing a module addition.
 - Add explicit `id` only when stable custom naming is needed in artifacts/reporting.
+
+## Mandatory Prereq Discovery
+
+Before proposing a new module entry, agents must fetch and analyze the target repository at the selected `ref` (or default branch if `ref` is omitted).
+
+Minimum files/signals to inspect:
+
+- `Gemfile` and `Gemfile.lock`
+- `Rakefile` and custom rake tasks used by validate/spec/test
+- `metadata.json`
+- `.fixtures.yml` or `.sync.yml` (if present)
+- `spec/spec_helper.rb`, `spec/spec_helper_local.rb`, and unit/integration specs under `spec/`
+- acceptance helpers/assets under `spec/acceptance/` or `acceptance/`
+- Any scripts invoked by tests (for example in `script/`, `tasks/`, or CI config)
+
+What to extract:
+
+- Native/system tools and libraries required by tests or providers.
+- OS-specific requirements (Linux/macOS/Windows) that imply package-manager entries.
+- Commands in specs/rake tasks that call external binaries.
+
+How to write `prereqs`:
+
+- Add only package-manager keys supported by schema (`apt`, `dnf`, `yum`, `apk`, `brew`, `choco`, `pacman`).
+- Include only non-empty unique package names.
+- If repo evidence shows no system prereqs, `prereqs` may be omitted.
+- If evidence is inconclusive, run a scoped CI attempt and derive prereqs from failure logs before finalizing.
+
+Evidence requirement in agent response:
+
+- Summarize which repository files were inspected.
+- State why `prereqs` were added or omitted.
+- Call out any assumptions and required follow-up if evidence was partial.
 
 ## Validation Checklist
 
