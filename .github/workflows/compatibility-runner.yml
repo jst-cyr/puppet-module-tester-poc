@@ -148,28 +148,6 @@ jobs:
             --workspace-dir w \
             --output-dir "o/${{ matrix.module.id }}"
 
-      - name: Windows path diagnostics
-        if: always() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $workspaceRoot = (Get-Location).Path
-          $moduleRoot = Join-Path $workspaceRoot "w/modules/${{ matrix.module.id }}"
-          Write-Host "workspace_root=$workspaceRoot"
-          Write-Host "workspace_root_len=$($workspaceRoot.Length)"
-          Write-Host "module_root=$moduleRoot"
-          Write-Host "module_root_len=$($moduleRoot.Length)"
-          $longPathsEnabled = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
-          Write-Host "LongPathsEnabled=$longPathsEnabled"
-          if (Test-Path $moduleRoot) {
-            $longest = Get-ChildItem -Path $moduleRoot -Recurse -Force -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -ne $null } |
-              Sort-Object { $_.FullName.Length } -Descending |
-              Select-Object -First 5
-            foreach ($item in $longest) {
-              Write-Host ("path_len=" + $item.FullName.Length + " path=" + $item.FullName)
-            }
-          }
-
       - name: Record module status
         if: always()
         shell: bash
