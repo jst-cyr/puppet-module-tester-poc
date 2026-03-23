@@ -69,6 +69,30 @@
       "ref": "master"
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-gitlab",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-gitlab_ci_runner",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-grafana",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-hdm",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-jira",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-keepalived",
+      "ref": "master"
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-logrotate",
       "ref": "master"
     },
