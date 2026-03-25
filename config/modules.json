@@ -231,12 +231,7 @@
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-telegraf",
-      "ref": "master",
-      "prereqs": {
-        "apt": [
-          "telegraf"
-        ]
-      }
+      "ref": "master"
     }
   ]
 }
