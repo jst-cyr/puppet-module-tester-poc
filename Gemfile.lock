@@ -1,14 +1,14 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    json (2.18.1)
+    json (2.19.3)
 
 PLATFORMS
   x64-mingw-ucrt
   x86_64-linux
 
 DEPENDENCIES
-  json
+  json (>= 2.19.2)
 
 RUBY VERSION
    ruby 3.2.10p266
