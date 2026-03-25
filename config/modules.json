@@ -135,14 +135,6 @@
         "apt": [
           "augeas-lenses",
           "libaugeas0"
-        ],
-        "dnf": [
-          "augeas",
-          "augeas-libs"
-        ],
-        "yum": [
-          "augeas",
-          "augeas-libs"
         ]
       }
     },
@@ -153,12 +145,6 @@
         "apt": [
           "nfs-common",
           "nfs-kernel-server"
-        ],
-        "dnf": [
-          "nfs-utils"
-        ],
-        "yum": [
-          "nfs-utils"
         ]
       }
     },
@@ -169,15 +155,6 @@
         "apt": [
           "nftables",
           "nft"
-        ],
-        "dnf": [
-          "nftables"
-        ],
-        "yum": [
-          "nftables"
-        ],
-        "pacman": [
-          "nftables"
         ]
       }
     },
@@ -190,21 +167,6 @@
           "ldap-utils",
           "augeas-lenses",
           "libaugeas0"
-        ],
-        "dnf": [
-          "openldap-servers",
-          "openldap-clients",
-          "augeas",
-          "augeas-libs"
-        ],
-        "yum": [
-          "openldap-servers",
-          "openldap-clients",
-          "augeas",
-          "augeas-libs"
-        ],
-        "brew": [
-          "openldap"
         ]
       }
     },
@@ -218,21 +180,6 @@
           "php-common",
           "php-fpm",
           "libmemcached-dev"
-        ],
-        "dnf": [
-          "php",
-          "php-devel",
-          "php-fpm",
-          "libmemcached-devel"
-        ],
-        "yum": [
-          "php",
-          "php-devel",
-          "php-fpm",
-          "libmemcached-devel"
-        ],
-        "brew": [
-          "php"
         ]
       }
     },
@@ -244,22 +191,6 @@
           "postfix",
           "augeas-lenses",
           "libaugeas0"
-        ],
-        "dnf": [
-          "postfix",
-          "augeas",
-          "augeas-libs"
-        ],
-        "yum": [
-          "postfix",
-          "augeas",
-          "augeas-libs"
-        ],
-        "apk": [
-          "postfix"
-        ],
-        "brew": [
-          "postfix"
         ]
       }
     },
@@ -277,12 +208,6 @@
       "prereqs": {
         "apt": [
           "redis-server"
-        ],
-        "dnf": [
-          "redis"
-        ],
-        "yum": [
-          "redis"
         ]
       }
     },
@@ -293,14 +218,6 @@
         "apt": [
           "squid",
           "libsepol-dev"
-        ],
-        "dnf": [
-          "squid",
-          "libsepol-devel"
-        ],
-        "yum": [
-          "squid",
-          "libsepol-devel"
         ]
       }
     },
@@ -310,12 +227,6 @@
       "prereqs": {
         "apt": [
           "coreutils"
-        ],
-        "dnf": [
-          "coreutils"
-        ],
-        "yum": [
-          "coreutils"
         ]
       }
     },
@@ -324,18 +235,6 @@
       "ref": "master",
       "prereqs": {
         "apt": [
-          "telegraf"
-        ],
-        "dnf": [
-          "telegraf"
-        ],
-        "yum": [
-          "telegraf"
-        ],
-        "brew": [
-          "telegraf"
-        ],
-        "choco": [
           "telegraf"
         ]
       }
