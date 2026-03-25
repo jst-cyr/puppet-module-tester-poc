@@ -123,6 +123,222 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-yum",
       "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-kibana",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-kmod",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "augeas-lenses",
+          "libaugeas0"
+        ],
+        "dnf": [
+          "augeas",
+          "augeas-libs"
+        ],
+        "yum": [
+          "augeas",
+          "augeas-libs"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-nfs",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "nfs-common",
+          "nfs-kernel-server"
+        ],
+        "dnf": [
+          "nfs-utils"
+        ],
+        "yum": [
+          "nfs-utils"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-nftables",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "nftables",
+          "nft"
+        ],
+        "dnf": [
+          "nftables"
+        ],
+        "yum": [
+          "nftables"
+        ],
+        "pacman": [
+          "nftables"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-openldap",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "slapd",
+          "ldap-utils",
+          "augeas-lenses",
+          "libaugeas0"
+        ],
+        "dnf": [
+          "openldap-servers",
+          "openldap-clients",
+          "augeas",
+          "augeas-libs"
+        ],
+        "yum": [
+          "openldap-servers",
+          "openldap-clients",
+          "augeas",
+          "augeas-libs"
+        ],
+        "brew": [
+          "openldap"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-php",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "php",
+          "php-dev",
+          "php-common",
+          "php-fpm",
+          "libmemcached-dev"
+        ],
+        "dnf": [
+          "php",
+          "php-devel",
+          "php-fpm",
+          "libmemcached-devel"
+        ],
+        "yum": [
+          "php",
+          "php-devel",
+          "php-fpm",
+          "libmemcached-devel"
+        ],
+        "brew": [
+          "php"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-postfix",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "postfix",
+          "augeas-lenses",
+          "libaugeas0"
+        ],
+        "dnf": [
+          "postfix",
+          "augeas",
+          "augeas-libs"
+        ],
+        "yum": [
+          "postfix",
+          "augeas",
+          "augeas-libs"
+        ],
+        "apk": [
+          "postfix"
+        ],
+        "brew": [
+          "postfix"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-prometheus_reporter",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-prometheus",
+      "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-redis",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "redis-server"
+        ],
+        "dnf": [
+          "redis"
+        ],
+        "yum": [
+          "redis"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-squid",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "squid",
+          "libsepol-dev"
+        ],
+        "dnf": [
+          "squid",
+          "libsepol-devel"
+        ],
+        "yum": [
+          "squid",
+          "libsepol-devel"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-swap_file",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "coreutils"
+        ],
+        "dnf": [
+          "coreutils"
+        ],
+        "yum": [
+          "coreutils"
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-telegraf",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "telegraf"
+        ],
+        "dnf": [
+          "telegraf"
+        ],
+        "yum": [
+          "telegraf"
+        ],
+        "brew": [
+          "telegraf"
+        ],
+        "choco": [
+          "telegraf"
+        ]
+      }
     }
   ]
 }
