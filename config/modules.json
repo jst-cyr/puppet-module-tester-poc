@@ -187,9 +187,10 @@
       "ref": "master",
       "prereqs": {
         "apt": [
-          "postfix",
-          "augeas-lenses",
-          "libaugeas0"
+            "libaugeas-dev",
+            "augeas-tools",
+            "pkg-config",
+            "build-essential"
         ]
       }
     },
