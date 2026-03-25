@@ -153,8 +153,7 @@
       "ref": "master",
       "prereqs": {
         "apt": [
-          "nftables",
-          "nft"
+          "nftables"
         ]
       }
     },
