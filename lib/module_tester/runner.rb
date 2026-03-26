@@ -9,6 +9,8 @@ require 'timeout'
 require 'shellwords'
 require 'rexml/document'
 require 'cgi'
+require 'yaml'
+require 'tempfile'
 
 module ModuleTester
   DEFAULT_PUPPET_CORE_SOURCE_URL = 'https://rubygems-puppetcore.puppet.com'
@@ -644,14 +646,88 @@ module ModuleTester
       return unless result[:capability]['has_acceptance']
       return unless tasks.include?('beaker')
 
+      puppet_core_api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').strip
+
       acceptance_env = env.dup
-      if @options[:beaker_setfile]
-        acceptance_env['BEAKER_SETFILE'] = File.expand_path(@options[:beaker_setfile])
-      end
-      acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
       acceptance_env['BEAKER_HYPERVISOR'] = 'docker'
 
+      if @options[:beaker_setfile] && !puppet_core_api_key.empty?
+        # Inject Puppet Core agent install into the setfile so the container
+        # ships with an authenticated Puppet Core build pre-installed.
+        effective_setfile = prepare_puppet_core_setfile(
+          @options[:beaker_setfile],
+          profile.fetch('puppet_major'),
+          puppet_core_api_key
+        )
+        acceptance_env['BEAKER_SETFILE'] = effective_setfile
+        acceptance_env['BEAKER_PUPPET_COLLECTION'] = 'preinstalled'
+      elsif @options[:beaker_setfile]
+        # No API key — fall back to FOSS puppet from public yum.puppet.com
+        acceptance_env['BEAKER_SETFILE'] = File.expand_path(@options[:beaker_setfile])
+        acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
+      else
+        acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
+      end
+
       result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, acceptance_env)
+    end
+
+    # Reads the base setfile YAML, appends docker_image_commands that install
+    # puppet-agent from the authenticated Puppet Core yum/apt repository, and
+    # writes the result to a temp file.  Returns the absolute path to the temp
+    # file.  The temp file lives in the workspace dir so it survives until the
+    # runner process exits.
+    def prepare_puppet_core_setfile(base_path, puppet_major, api_key)
+      base = YAML.safe_load(File.read(base_path), permitted_classes: [Symbol])
+
+      hosts_key = base['HOSTS']&.keys&.first
+      raise "No HOSTS entry found in setfile #{base_path}" unless hosts_key
+
+      host_cfg = base['HOSTS'][hosts_key]
+      platform = host_cfg['platform'].to_s           # e.g. "el-9-x86_64"
+      variant, version, _arch = platform.split('-', 3)
+
+      install_cmds = puppet_core_install_commands(variant, version, puppet_major, api_key)
+
+      existing_cmds = host_cfg['docker_image_commands'] || []
+      host_cfg['docker_image_commands'] = existing_cmds + install_cmds
+
+      out_dir = File.join(@options[:workspace_dir], '.beaker-setfiles')
+      FileUtils.mkdir_p(out_dir)
+      out_path = File.join(out_dir, "#{File.basename(base_path, '.*')}-puppetcore.yml")
+      File.write(out_path, YAML.dump(base))
+      File.expand_path(out_path)
+    end
+
+    def puppet_core_install_commands(variant, version, puppet_major, api_key)
+      collection = "puppet#{puppet_major}"
+
+      case variant
+      when 'el', 'centos', 'redhat', 'rocky', 'alma', 'fedora', 'amazon'
+        release_rpm = "https://yum-puppetcore.puppet.com/public/#{collection}-release-#{variant}-#{version}.noarch.rpm"
+        repo_file = "/etc/yum.repos.d/#{collection}-release.repo"
+        [
+          "rpm -Uvh #{release_rpm}",
+          "sed -i 's/^#username=forge-key/username=forge-key/' #{repo_file} || sed -i '/^\\[#{collection}\\]/a username=forge-key' #{repo_file}",
+          "sed -i 's/^#password=.*/password=#{api_key}/' #{repo_file} || sed -i '/^username=forge-key/a password=#{api_key}' #{repo_file}",
+          "dnf install -y puppet-agent || yum install -y puppet-agent",
+        ]
+      when 'debian', 'ubuntu'
+        codename_cmd = ". /etc/os-release && echo $VERSION_CODENAME"
+        release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(#{codename_cmd}).deb"
+        auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
+        repo_host = 'apt-puppetcore.puppet.com'
+        [
+          "apt-get update -qq && apt-get install -y wget",
+          "wget -O /tmp/#{collection}-release.deb \"#{release_deb_url}\"",
+          "dpkg -i /tmp/#{collection}-release.deb",
+          "mkdir -p /etc/apt/auth.conf.d",
+          "echo 'machine #{repo_host} login forge-key password #{api_key}' > #{auth_file}",
+          "apt-get update -qq && apt-get install -y puppet-agent",
+        ]
+      else
+        raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
+      end
     end
 
     def downgrade_puppet_server_default_unit_failure(result, unit_stage)

@@ -4,7 +4,7 @@ HOSTS:
     image: rockylinux:9
     hypervisor: docker
     docker_image_commands:
-      - dnf install -y cronie initscripts
+      - dnf install -y cronie initscripts wget
 CONFIG:
   log_level: verbose
   type: foss
