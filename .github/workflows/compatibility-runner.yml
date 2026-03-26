@@ -423,6 +423,7 @@ jobs:
           else
             echo "report file not found"
           fi
+          exit 1
 
   summarize:
     runs-on: ubuntu-latest

@@ -62,7 +62,7 @@ def main() -> int:
         )
 
         if acceptance_rows:
-            summary.write('\n## Acceptance Coverage (non-gating)\n\n')
+            summary.write('\n## Acceptance Coverage\n\n')
             summary.write('| Module | Target | Class | State | Metadata | Dependency | Documentation |\n')
             summary.write('|---|---|---|---|---|---|---|\n')
             for row in acceptance_rows:
@@ -112,9 +112,12 @@ def main() -> int:
 
     if acceptance_warning_rows or acceptance_failure_rows:
         print('Acceptance issues detected:')
-        for row in acceptance_warning_rows + acceptance_failure_rows:
+        for row in acceptance_warning_rows:
             print(f"- {row['id']} ({row.get('acceptance_target', 'n/a')}): {row['message']}")
             emit('warning', f"{row['id']} acceptance {row.get('acceptance_target', 'n/a')}", row['message'])
+        for row in acceptance_failure_rows:
+            print(f"- {row['id']} ({row.get('acceptance_target', 'n/a')}): {row['message']}")
+            emit('error', f"{row['id']} acceptance {row.get('acceptance_target', 'n/a')}", row['message'])
 
     if unit_counts.get('warning', 0) > 0:
         emit(
@@ -124,8 +127,9 @@ def main() -> int:
         )
 
     if acceptance_rows:
+        acceptance_level = 'error' if acceptance_counts.get('failure', 0) > 0 else 'warning' if acceptance_counts.get('warning', 0) > 0 else 'notice'
         emit(
-            'notice',
+            acceptance_level,
             'Acceptance coverage summary',
             f"acceptance clean={acceptance_counts.get('clean', 0)} warning={acceptance_counts.get('warning', 0)} failure={acceptance_counts.get('failure', 0)}",
         )
@@ -136,6 +140,9 @@ def main() -> int:
             'Unit compatibility summary',
             f"{unit_counts['failure']} module(s) failed; {unit_counts.get('warning', 0)} warning; {unit_counts.get('clean', 0)} clean.",
         )
+        return 1
+
+    if acceptance_counts.get('failure', 0) > 0:
         return 1
 
     emit(
