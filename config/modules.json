@@ -6,7 +6,16 @@
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-archive",
-      "ref": "master"
+      "ref": "master",
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "linux",
+            "runs_on": "ubuntu-latest"
+          }
+        ]
+      }
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-augeasproviders_core",
