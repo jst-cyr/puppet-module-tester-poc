@@ -18,6 +18,7 @@ module ModuleTester
   ModuleResult = Struct.new(
     :module,
     :ref,
+    :test_mode,
     :profile,
     :started_at,
     :metadata_status,
@@ -45,7 +46,8 @@ module ModuleTester
       workspace_dir: 'workspace',
       output_dir: 'results',
       metadata_mode: ENV.fetch('PUPPET_COMPAT_METADATA_MODE', 'warn'),
-      allow_acceptance: false
+      allow_acceptance: false,
+      test_mode: 'unit'
     }.freeze
 
     def initialize(argv)
@@ -97,7 +99,12 @@ module ModuleTester
         opts.on('--output-dir PATH') { |v| @options[:output_dir] = v }
         opts.on('--metadata-mode MODE') { |v| @options[:metadata_mode] = v }
         opts.on('--allow-acceptance') { @options[:allow_acceptance] = true }
+        opts.on('--test-mode MODE') { |v| @options[:test_mode] = v.to_s.strip.downcase }
       end.parse!(@argv)
+
+      unless %w[unit acceptance].include?(@options[:test_mode])
+        raise "Unsupported test mode '#{@options[:test_mode]}'. Expected one of: unit, acceptance"
+      end
     end
 
     def load_profiles(path)
@@ -119,7 +126,7 @@ module ModuleTester
       ref = mod.fetch('ref')
       module_name = slugify_repo(repo)
       module_dir = File.join(@options[:workspace_dir], 'modules', module_name)
-      result = new_result(module_name, ref, profile.fetch('name'))
+      result = new_result(module_name, ref, profile.fetch('name'), @options[:test_mode])
 
       begin
         ok, clone_output = clone_repo(repo, ref, module_dir)
@@ -216,10 +223,11 @@ module ModuleTester
       value.to_s.gsub('%', '%25').gsub("\r", '%0D').gsub("\n", '%0A')
     end
 
-    def new_result(module_name, ref, profile_name)
+    def new_result(module_name, ref, profile_name, test_mode)
       ModuleResult.new(
         module: module_name,
         ref: ref,
+        test_mode: test_mode,
         profile: profile_name,
         started_at: Time.now.utc.iso8601,
         metadata_status: 'requires_manual_review',
@@ -588,6 +596,11 @@ module ModuleTester
     end
 
     def run_adapters(module_dir, env, profile, result)
+      if @options[:test_mode] == 'acceptance'
+        run_acceptance_adapter(module_dir, env, result)
+        return
+      end
+
       prefer_rake = result[:capability].is_a?(Hash) && result[:capability]['uses_vox_vars']
 
       if command_available?('pdk') && !prefer_rake
@@ -619,9 +632,17 @@ module ModuleTester
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
       end
 
-      if @options[:allow_acceptance] && result[:capability]['has_acceptance'] && tasks.include?('beaker')
-        result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, env)
-      end
+    end
+
+    def run_acceptance_adapter(module_dir, env, result)
+      return unless @options[:allow_acceptance]
+      return unless File.exist?(File.join(module_dir, 'Rakefile')) && command_available?('bundle')
+
+      tasks = rake_tasks(module_dir, env)
+      return unless result[:capability]['has_acceptance']
+      return unless tasks.include?('beaker')
+
+      result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, env)
     end
 
     def downgrade_puppet_server_default_unit_failure(result, unit_stage)
@@ -831,6 +852,13 @@ module ModuleTester
       end
       return 'harness_error' if harness_stage_failures
 
+      if @options[:test_mode] == 'acceptance'
+        acceptance_stage = result[:stages].find { |stage| stage.name == 'acceptance' }
+        return 'inconclusive' if acceptance_stage.nil?
+
+        return acceptance_stage.status == 'passed' ? 'compatible' : 'not_compatible'
+      end
+
       failing_stage = result[:stages].any? { |stage| stage.name != 'bootstrap' && stage.status != 'passed' }
       return 'not_compatible' if failing_stage
 
@@ -921,6 +949,7 @@ module ModuleTester
       {
         module: result[:module],
         ref: result[:ref],
+        test_mode: result[:test_mode],
         profile: result[:profile],
         started_at: result[:started_at],
         metadata_status: result[:metadata_status],

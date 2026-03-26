@@ -29,6 +29,8 @@ def main() -> int:
         return 0
 
     summary_class = status.get('class', 'unknown')
+    lane = status.get('lane', 'unit')
+    acceptance_target = status.get('acceptance_target', '')
     compatibility_state = status.get('compatibility_state', 'unknown')
     metadata_status = status.get('metadata_status', 'unknown')
     metadata_message = status.get('metadata_message', '')
@@ -37,7 +39,8 @@ def main() -> int:
     documentation_status = status.get('documentation_status', 'unknown')
     documentation_message = status.get('documentation_message', '')
 
-    print(f'[{module_id}] class={summary_class} state={compatibility_state}')
+    lane_suffix = f' target={acceptance_target}' if acceptance_target else ''
+    print(f'[{module_id}] lane={lane}{lane_suffix} class={summary_class} state={compatibility_state}')
     if metadata_status != 'supported':
         print(f'- metadata: {metadata_status} {metadata_message}'.strip())
     if dependency_status == 'warning':
@@ -47,6 +50,9 @@ def main() -> int:
 
     append_line(summary_path, f'## {module_id}')
     append_line(summary_path, '')
+    append_line(summary_path, f'- Lane: {lane}')
+    if acceptance_target:
+        append_line(summary_path, f'- Acceptance target: {acceptance_target}')
     append_line(summary_path, f'- Class: {summary_class}')
     append_line(summary_path, f'- Compatibility state: {compatibility_state}')
     append_line(summary_path, f'- Metadata: {metadata_status}')

@@ -7,9 +7,13 @@ def main() -> int:
     report = os.environ['REPORT']
     status_file = os.environ['STATUS_FILE']
     module_id = os.environ['MODULE_ID']
+    test_lane = os.environ.get('TEST_LANE', 'unit').strip() or 'unit'
+    acceptance_target = os.environ.get('ACCEPTANCE_TARGET', '').strip()
 
     payload = {
         'id': module_id,
+        'lane': test_lane,
+        'acceptance_target': acceptance_target,
         'class': 'failure',
         'compatibility_state': 'missing_report',
         'metadata_status': 'unknown',
@@ -49,6 +53,8 @@ def main() -> int:
 
         payload = {
             'id': module_id,
+            'lane': test_lane,
+            'acceptance_target': acceptance_target,
             'class': klass,
             'compatibility_state': state,
             'metadata_status': metadata,
@@ -64,7 +70,7 @@ def main() -> int:
         json.dump(payload, handle, indent=2)
 
     print(
-        f"[{payload['id']}] class={payload['class']} "
+        f"[{payload['id']}] lane={payload.get('lane', 'unit')} class={payload['class']} "
         f"state={payload['compatibility_state']} "
         f"metadata={payload['metadata_status']} dependency={payload['dependency_status']} documentation={payload['documentation_status']}"
     )

@@ -16,7 +16,8 @@ def main() -> int:
     summary_path = os.environ['GITHUB_STEP_SUMMARY']
 
     rows = []
-    counts = {'clean': 0, 'warning': 0, 'failure': 0}
+    unit_counts = {'clean': 0, 'warning': 0, 'failure': 0}
+    acceptance_counts = {'clean': 0, 'warning': 0, 'failure': 0}
 
     if os.path.isdir(root):
         for current_root, _dirs, files in os.walk(root):
@@ -28,68 +29,120 @@ def main() -> int:
                 row = json.load(handle)
 
             rows.append(row)
-            counts[row['class']] = counts.get(row['class'], 0) + 1
 
-    rows.sort(key=lambda item: item['id'])
-    warning_rows = [row for row in rows if row['class'] == 'warning']
-    failure_rows = [row for row in rows if row['class'] == 'failure']
-    metadata_mismatch_rows = [row for row in rows if row.get('metadata_status') != 'supported']
+    rows.sort(key=lambda item: (item.get('lane', 'unit'), item['id'], item.get('acceptance_target', '')))
+
+    unit_rows = [row for row in rows if row.get('lane', 'unit') == 'unit']
+    acceptance_rows = [row for row in rows if row.get('lane', 'unit') == 'acceptance']
+
+    for row in unit_rows:
+        unit_counts[row['class']] = unit_counts.get(row['class'], 0) + 1
+    for row in acceptance_rows:
+        acceptance_counts[row['class']] = acceptance_counts.get(row['class'], 0) + 1
+
+    unit_warning_rows = [row for row in unit_rows if row['class'] == 'warning']
+    unit_failure_rows = [row for row in unit_rows if row['class'] == 'failure']
+    acceptance_warning_rows = [row for row in acceptance_rows if row['class'] == 'warning']
+    acceptance_failure_rows = [row for row in acceptance_rows if row['class'] == 'failure']
+    metadata_mismatch_rows = [row for row in unit_rows if row.get('metadata_status') != 'supported']
 
     with open(summary_path, 'a', encoding='utf-8') as summary:
         summary.write('# Compatibility Run Summary\n\n')
+        summary.write('## Unit Compatibility (gating)\n\n')
         summary.write('| Module | Class | State | Metadata | Dependency | Documentation |\n')
         summary.write('|---|---|---|---|---|---|\n')
-        for row in rows:
+        for row in unit_rows:
             summary.write(
                 f"| {row['id']} | {row['class']} | {row['compatibility_state']} | {row['metadata_status']} | {row['dependency_status']} | {row.get('documentation_status', 'unknown')} |\n"
             )
 
         summary.write('\n')
         summary.write(
-            f"**Totals:** clean={counts.get('clean', 0)}, warning={counts.get('warning', 0)}, failure={counts.get('failure', 0)}\n"
+            f"**Unit totals:** clean={unit_counts.get('clean', 0)}, warning={unit_counts.get('warning', 0)}, failure={unit_counts.get('failure', 0)}\n"
         )
+
+        if acceptance_rows:
+            summary.write('\n## Acceptance Coverage (non-gating)\n\n')
+            summary.write('| Module | Target | Class | State | Metadata | Dependency | Documentation |\n')
+            summary.write('|---|---|---|---|---|---|---|\n')
+            for row in acceptance_rows:
+                summary.write(
+                    f"| {row['id']} | {row.get('acceptance_target', 'n/a')} | {row['class']} | {row['compatibility_state']} | {row['metadata_status']} | {row['dependency_status']} | {row.get('documentation_status', 'unknown')} |\n"
+                )
+
+            summary.write('\n')
+            summary.write(
+                f"**Acceptance totals:** clean={acceptance_counts.get('clean', 0)}, warning={acceptance_counts.get('warning', 0)}, failure={acceptance_counts.get('failure', 0)}\n"
+            )
 
         if metadata_mismatch_rows:
             summary.write(f'\n**Metadata Notices:** {len(metadata_mismatch_rows)} module(s) have metadata mismatches (see notices for details)\n')
 
-        if warning_rows:
-            summary.write('\n## Warnings\n\n')
-            for row in warning_rows:
+        if unit_warning_rows:
+            summary.write('\n## Unit Warnings\n\n')
+            for row in unit_warning_rows:
                 summary.write(f"- {row['id']}: {row['message']}\n")
 
-        if failure_rows:
-            summary.write('\n## Failures\n\n')
-            for row in failure_rows:
+        if unit_failure_rows:
+            summary.write('\n## Unit Failures\n\n')
+            for row in unit_failure_rows:
                 summary.write(f"- {row['id']}: {row['message']}\n")
 
-    if warning_rows:
-        print('Warnings detected:')
-        for row in warning_rows:
+        if acceptance_warning_rows:
+            summary.write('\n## Acceptance Warnings\n\n')
+            for row in acceptance_warning_rows:
+                summary.write(f"- {row['id']} ({row.get('acceptance_target', 'n/a')}): {row['message']}\n")
+
+        if acceptance_failure_rows:
+            summary.write('\n## Acceptance Failures\n\n')
+            for row in acceptance_failure_rows:
+                summary.write(f"- {row['id']} ({row.get('acceptance_target', 'n/a')}): {row['message']}\n")
+
+    if unit_warning_rows:
+        print('Unit warnings detected:')
+        for row in unit_warning_rows:
             print(f"- {row['id']}: {row['message']}")
             emit('warning', row['id'], row['message'])
 
-    if failure_rows:
-        print('Failures detected:')
-        for row in failure_rows:
+    if unit_failure_rows:
+        print('Unit failures detected:')
+        for row in unit_failure_rows:
             print(f"- {row['id']}: {row['message']}")
             emit('error', row['id'], row['message'])
 
-    if counts.get('warning', 0) > 0:
+    if acceptance_warning_rows or acceptance_failure_rows:
+        print('Acceptance issues detected:')
+        for row in acceptance_warning_rows + acceptance_failure_rows:
+            print(f"- {row['id']} ({row.get('acceptance_target', 'n/a')}): {row['message']}")
+            emit('warning', f"{row['id']} acceptance {row.get('acceptance_target', 'n/a')}", row['message'])
+
+    if unit_counts.get('warning', 0) > 0:
         emit(
             'warning',
-            'Compatibility summary',
-            f"{counts['warning']} module(s) with warnings; {counts.get('clean', 0)} clean; {counts.get('failure', 0)} failed.",
+            'Unit compatibility summary',
+            f"{unit_counts['warning']} module(s) with warnings; {unit_counts.get('clean', 0)} clean; {unit_counts.get('failure', 0)} failed.",
         )
 
-    if counts.get('failure', 0) > 0:
+    if acceptance_rows:
+        emit(
+            'notice',
+            'Acceptance coverage summary',
+            f"acceptance clean={acceptance_counts.get('clean', 0)} warning={acceptance_counts.get('warning', 0)} failure={acceptance_counts.get('failure', 0)}",
+        )
+
+    if unit_counts.get('failure', 0) > 0:
         emit(
             'error',
-            'Compatibility summary',
-            f"{counts['failure']} module(s) failed; {counts.get('warning', 0)} warning; {counts.get('clean', 0)} clean.",
+            'Unit compatibility summary',
+            f"{unit_counts['failure']} module(s) failed; {unit_counts.get('warning', 0)} warning; {unit_counts.get('clean', 0)} clean.",
         )
         return 1
 
-    emit('notice', 'Compatibility summary', f"All failing modules cleared. clean={counts.get('clean', 0)} warning={counts.get('warning', 0)}")
+    emit(
+        'notice',
+        'Unit compatibility summary',
+        f"All failing modules cleared. clean={unit_counts.get('clean', 0)} warning={unit_counts.get('warning', 0)}",
+    )
     return 0
 
 

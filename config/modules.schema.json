@@ -66,12 +66,69 @@
                 "$ref": "#/$defs/packageList"
               }
             }
+          },
+          "acceptance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "targets": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/acceptanceTarget"
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "enabled": {
+                      "const": true
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "targets"
+                  ]
+                }
+              }
+            ]
           }
         }
       }
     }
   },
   "$defs": {
+    "acceptanceTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "runs_on"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runs_on": {
+          "type": "string",
+          "enum": [
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest"
+          ]
+        }
+      }
+    },
     "packageList": {
       "type": "array",
       "minItems": 1,
