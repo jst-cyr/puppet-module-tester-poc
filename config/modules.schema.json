@@ -112,20 +112,16 @@
       "additionalProperties": false,
       "required": [
         "name",
-        "runs_on"
+        "setfile"
       ],
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1
         },
-        "runs_on": {
+        "setfile": {
           "type": "string",
-          "enum": [
-            "ubuntu-latest",
-            "windows-latest",
-            "macos-latest"
-          ]
+          "minLength": 1
         }
       }
     },

@@ -1,0 +1,10 @@
+HOSTS:
+  el9-default:
+    platform: el-9-x86_64
+    image: rockylinux:9
+    hypervisor: docker
+    docker_image_commands:
+      - dnf install -y cronie initscripts
+CONFIG:
+  log_level: verbose
+  type: foss

@@ -88,11 +88,12 @@ jobs:
                 'repo' => repo,
                 'ref' => ref,
                 'id' => id,
-                'os' => target.fetch('runs_on', 'ubuntu-latest'),
+                'os' => 'ubuntu-latest',
                 'prereqs' => prereqs,
                 'lane' => 'acceptance',
                 'target' => target_name,
-                'target_id' => target_id
+                'target_id' => target_id,
+                'setfile' => target.fetch('setfile')
               }
             end
           end
@@ -365,6 +366,7 @@ jobs:
             --profile "${{ github.event.inputs.profile || '8-latest-maintained' }}" \
             --allow-acceptance \
             --test-mode acceptance \
+            --beaker-setfile "config/beaker/setfiles/${{ matrix.module.setfile }}.yml" \
             --workspace-dir w \
             --output-dir "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}"
 

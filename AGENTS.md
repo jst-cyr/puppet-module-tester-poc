@@ -11,6 +11,7 @@ This file is for coding agents working in this repository.
 
 - `config/modules.json`: module definitions used by local runs and CI matrix generation.
 - `config/modules.schema.json`: schema for module config validation.
+- `config/beaker/setfiles/`: Beaker host definition files (one per acceptance target, e.g. `el9.yml`).
 - `scripts/validate_modules_config.py`: local schema validation helper.
 - `.github/workflows/compatibility-runner.yml`: CI pipeline and matrix execution.
 - `profiles/puppet_profiles.json`: profile constraints used by the runner.
@@ -103,6 +104,15 @@ When you need a narrow CI run, use workflow input `modules_json` with only new o
 - Workflow validates `config/modules.json` before matrix fan-out.
 - Matrix `runs-on` follows per-module `os` when set; otherwise Ubuntu default applies.
 - Cross-platform prereqs are installed by package-manager keys in `prereqs` (such as `apt`, `choco`, `brew`).
+- Acceptance jobs always run on `ubuntu-latest`; the SUT is a Docker container controlled by `BEAKER_SETFILE`.
+- The runner injects `BEAKER_PUPPET_COLLECTION=puppet<major>` to install Puppet Core (not OpenVox).
+
+## Beaker Setfiles
+
+- Each acceptance target in `config/modules.json` references a `setfile` by name (filename stem).
+- Corresponding YAML files live under `config/beaker/setfiles/` (e.g. `el9` → `config/beaker/setfiles/el9.yml`).
+- The setfile defines the Docker image and platform for the Beaker SUT.
+- When adding a new target OS, create the setfile first, then reference it in `modules.json`.
 
 ## Editing Expectations for Agents
 

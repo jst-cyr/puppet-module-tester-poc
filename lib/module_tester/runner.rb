@@ -47,7 +47,8 @@ module ModuleTester
       output_dir: 'results',
       metadata_mode: ENV.fetch('PUPPET_COMPAT_METADATA_MODE', 'warn'),
       allow_acceptance: false,
-      test_mode: 'unit'
+      test_mode: 'unit',
+      beaker_setfile: nil
     }.freeze
 
     def initialize(argv)
@@ -100,6 +101,7 @@ module ModuleTester
         opts.on('--metadata-mode MODE') { |v| @options[:metadata_mode] = v }
         opts.on('--allow-acceptance') { @options[:allow_acceptance] = true }
         opts.on('--test-mode MODE') { |v| @options[:test_mode] = v.to_s.strip.downcase }
+        opts.on('--beaker-setfile PATH') { |v| @options[:beaker_setfile] = v }
       end.parse!(@argv)
 
       unless %w[unit acceptance].include?(@options[:test_mode])
@@ -597,7 +599,7 @@ module ModuleTester
 
     def run_adapters(module_dir, env, profile, result)
       if @options[:test_mode] == 'acceptance'
-        run_acceptance_adapter(module_dir, env, result)
+        run_acceptance_adapter(module_dir, env, result, profile)
         return
       end
 
@@ -634,7 +636,7 @@ module ModuleTester
 
     end
 
-    def run_acceptance_adapter(module_dir, env, result)
+    def run_acceptance_adapter(module_dir, env, result, profile)
       return unless @options[:allow_acceptance]
       return unless File.exist?(File.join(module_dir, 'Rakefile')) && command_available?('bundle')
 
@@ -642,7 +644,14 @@ module ModuleTester
       return unless result[:capability]['has_acceptance']
       return unless tasks.include?('beaker')
 
-      result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, env)
+      acceptance_env = env.dup
+      if @options[:beaker_setfile]
+        acceptance_env['BEAKER_SETFILE'] = File.expand_path(@options[:beaker_setfile])
+      end
+      acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
+      acceptance_env['BEAKER_HYPERVISOR'] = 'docker'
+
+      result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, acceptance_env)
     end
 
     def downgrade_puppet_server_default_unit_failure(result, unit_stage)

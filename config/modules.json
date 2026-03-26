@@ -11,8 +11,8 @@
         "enabled": true,
         "targets": [
           {
-            "name": "linux",
-            "runs_on": "ubuntu-latest"
+            "name": "el9",
+            "setfile": "el9"
           }
         ]
       }
