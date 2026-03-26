@@ -708,8 +708,7 @@ module ModuleTester
         repo_file = "/etc/yum.repos.d/#{collection}-release.repo"
         [
           "rpm -Uvh #{release_rpm}",
-          "sed -i 's/^#username=forge-key/username=forge-key/' #{repo_file} || sed -i '/^\\[#{collection}\\]/a username=forge-key' #{repo_file}",
-          "sed -i 's/^#password=.*/password=#{api_key}/' #{repo_file} || sed -i '/^username=forge-key/a password=#{api_key}' #{repo_file}",
+          "sed -i '/^#\\?username=/d; /^#\\?password=/d; /^\\[#{collection}\\]/a username=forge-key\\npassword=#{api_key}' #{repo_file}",
           "dnf install -y puppet-agent || yum install -y puppet-agent",
         ]
       when 'debian', 'ubuntu'
