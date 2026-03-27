@@ -680,8 +680,11 @@ module ModuleTester
       diag_lines << "BEAKER_PUPPET_COLLECTION=#{effective_collection}" if effective_collection
       diag_lines << "BEAKER_HYPERVISOR=#{acceptance_env['BEAKER_HYPERVISOR']}"
       if effective_setfile && File.exist?(effective_setfile)
+        sanitized_setfile = File.read(effective_setfile)
+          .gsub(/password=\S+/, 'password=[REDACTED]')
+          .gsub(/(login\s+forge-key\s+password\s+)\S+/, '\\1[REDACTED]')
         diag_lines << "--- Effective setfile content ---"
-        diag_lines << File.read(effective_setfile)
+        diag_lines << sanitized_setfile
       end
       result[:stages] << StageResult.new(
         name: 'acceptance_env',
@@ -707,6 +710,9 @@ module ModuleTester
       raise "No HOSTS entry found in setfile #{base_path}" unless hosts_key
 
       host_cfg = base['HOSTS'][hosts_key]
+      host_cfg['ip'] = '127.0.0.1'
+      host_cfg['hostname'] = 'localhost'
+      host_cfg['vmhostname'] = 'localhost'
       platform = host_cfg['platform'].to_s           # e.g. "el-9-x86_64"
       variant, version, _arch = platform.split('-', 3)
 
