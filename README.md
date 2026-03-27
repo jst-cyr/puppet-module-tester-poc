@@ -26,7 +26,6 @@ Run compatibility tests for Vox Pupuli (and other community) modules against Pup
 	- optional acceptance stage (`--allow-acceptance`)
 - Outputs:
 	- JSON report: `results/.../compatibility-report.json`
-	- JUnit report: `results/.../compatibility-report.junit.xml`
 	- Markdown summary: `results/.../compatibility-summary.md`
 	- Stage logs per module: `results/.../artifacts/<module>/.stage-*.log`
 	- Per-module dependency status/message (`dependency_status`, `dependency_message`) in JSON report

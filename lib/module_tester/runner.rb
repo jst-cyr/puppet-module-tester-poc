@@ -7,7 +7,6 @@ require 'time'
 require 'open3'
 require 'timeout'
 require 'shellwords'
-require 'rexml/document'
 require 'cgi'
 require 'yaml'
 require 'tempfile'
@@ -989,7 +988,6 @@ module ModuleTester
     def write_reports(results)
       FileUtils.mkdir_p(@options[:output_dir])
       write_json(results)
-      write_junit(results)
       write_summary(results)
     end
 
@@ -1013,38 +1011,6 @@ module ModuleTester
     def write_json(results)
       payload = { 'results' => results.map { |r| serialize_result(r) } }
       File.write(File.join(@options[:output_dir], 'compatibility-report.json'), JSON.pretty_generate(payload))
-    end
-
-    def write_junit(results)
-      doc = REXML::Document.new
-      suite = doc.add_element('testsuite', { 'name' => 'puppet-module-compatibility' })
-      tests = 0
-      failures = 0
-
-      results.each do |result|
-        result[:stages].each do |stage|
-          tests += 1
-          testcase = suite.add_element('testcase', {
-                                         'classname' => result[:module],
-                                         'name' => stage.name,
-                                         'time' => (stage.duration_seconds || 0).to_s
-                                       })
-          next if stage.status == 'passed'
-
-          failures += 1
-          failure = testcase.add_element('failure', { 'message' => stage.status })
-          failure.text = stage.output.to_s
-        end
-      end
-
-      suite.add_attribute('tests', tests.to_s)
-      suite.add_attribute('failures', failures.to_s)
-
-      formatter = REXML::Formatters::Pretty.new(2)
-      formatter.compact = true
-      output = +' '
-      formatter.write(doc, output)
-      File.write(File.join(@options[:output_dir], 'compatibility-report.junit.xml'), output)
     end
 
     def write_summary(results)

@@ -82,7 +82,6 @@ ruby scripts/run_local.rb
 Reports are written to:
 
 - `results/local/compatibility-report.json`
-- `results/local/compatibility-report.junit.xml`
 - `results/local/compatibility-summary.md`
 
 ## 6) If bootstrap fails
