@@ -105,7 +105,10 @@ When you need a narrow CI run, use workflow input `modules_json` with only new o
 - Matrix `runs-on` follows per-module `os` when set; otherwise Ubuntu default applies.
 - Cross-platform prereqs are installed by package-manager keys in `prereqs` (such as `apt`, `choco`, `brew`).
 - Acceptance jobs always run on `ubuntu-latest`; the SUT is a Docker container controlled by `BEAKER_SETFILE`.
-- When `PUPPET_CORE_API_KEY` is set, the runner rewrites the setfile to inject authenticated Puppet Core agent install commands into `docker_image_commands`, then sets `BEAKER_PUPPET_COLLECTION=preinstalled` so Beaker skips its default install.
+- When `PUPPET_CORE_API_KEY` is set, the runner uses a **two-stage isolation model**:
+  1. **Build stage** (`build_sut_image`): runs `docker build` with the API key passed as a build arg. Puppet Core agent is installed and credentials are scrubbed from repo config files in the same Dockerfile layer so they never persist in the image.
+  2. **Test stage** (`acceptance`): runs untrusted module test code (Beaker/rspec) with **no secrets in the environment**. The runner strips `PUPPET_CORE_API_KEY`, `PASSWORD`, `USERNAME`, and `BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM` from the env before invoking tests. The setfile references the pre-built local image tag — no credentials are embedded in the setfile.
+- This design ensures third-party module test code cannot exfiltrate the API key.
 - Without an API key, acceptance falls back to the public FOSS puppet-agent from `yum.puppet.com` (capped at 8.10.0).
 
 ## Beaker Setfiles
@@ -113,7 +116,8 @@ When you need a narrow CI run, use workflow input `modules_json` with only new o
 - Each acceptance target in `config/modules.json` references a `setfile` by name (filename stem).
 - Corresponding YAML files live under `config/beaker/setfiles/` (e.g. `el9` → `config/beaker/setfiles/el9.yml`).
 - The setfile defines the Docker image and platform for the Beaker SUT.
-- At runtime, the runner reads the base setfile file, appends Puppet Core install commands (using credentials from `PUPPET_CORE_API_KEY`), and writes a temporary setfile to `workspace/.beaker-setfiles/`.
+- At runtime, the runner builds a Docker image from the base setfile parameters (image, platform, docker_image_commands) plus Puppet Core install steps, then writes a clean setfile to `workspace/.beaker-setfiles/` that references the locally-built image tag.
+- The rewritten setfile contains no secrets — only the image tag and platform metadata.
 - When adding a new target OS, create the setfile first, then reference it in `modules.json`.
 
 ## Editing Expectations for Agents
