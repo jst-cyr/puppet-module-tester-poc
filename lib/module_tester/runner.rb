@@ -680,9 +680,7 @@ module ModuleTester
       diag_lines << "BEAKER_PUPPET_COLLECTION=#{effective_collection}" if effective_collection
       diag_lines << "BEAKER_HYPERVISOR=#{acceptance_env['BEAKER_HYPERVISOR']}"
       if effective_setfile && File.exist?(effective_setfile)
-        sanitized_setfile = File.read(effective_setfile)
-          .gsub(/password=\S+/, 'password=[REDACTED]')
-          .gsub(/(login\s+forge-key\s+password\s+)\S+/, '\\1[REDACTED]')
+        sanitized_setfile = redact_sensitive(File.read(effective_setfile))
         diag_lines << "--- Effective setfile content ---"
         diag_lines << sanitized_setfile
       end
@@ -692,7 +690,7 @@ module ModuleTester
         command: nil,
         exit_code: 0,
         duration_seconds: 0,
-        output: diag_lines.join("\n")
+        output: redact_sensitive(diag_lines.join("\n"))
       )
 
       result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, acceptance_env)
@@ -940,6 +938,9 @@ module ModuleTester
         value = value.gsub(escaped, '[REDACTED]') unless escaped.empty?
       end
 
+      # Catch credentials embedded in shell snippets and wrapped YAML strings.
+      value = value.gsub(/(password\s*=\s*)(?:\\\s*\n\s*)?[^\s'"\\]+/i, '\\1[REDACTED]')
+      value = value.gsub(/(login\s+forge-key\s+password\s+)(?:\\\s*\n\s*)?[^\s'"\\]+/i, '\\1[REDACTED]')
       value = value.gsub(/forge-key:[^\s'"@]+/, 'forge-key:[REDACTED]')
       value = value.gsub(/license-id:[^\s'"@]+/, 'license-id:[REDACTED]')
       value
@@ -1078,10 +1079,10 @@ module ModuleTester
           {
             name: stage.name,
             status: stage.status,
-            command: stage.command,
+            command: redact_sensitive(stage.command),
             exit_code: stage.exit_code,
             duration_seconds: stage.duration_seconds,
-            output: stage.output
+            output: redact_sensitive(stage.output)
           }
         end,
         compatibility_state: result[:compatibility_state]
