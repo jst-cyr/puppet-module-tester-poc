@@ -383,7 +383,7 @@ jobs:
             for f in w/.beaker-setfiles/*.yml; do
               [ -f "$f" ] || continue
               echo "===== $f ====="
-              cat "$f"
+              sed -E 's/password=[^[:space:]]+/password=[REDACTED]/g; s/(login[[:space:]]+forge-key[[:space:]]+password[[:space:]]+)[^[:space:]]+/\1[REDACTED]/g' "$f"
             done
           else
             echo "No rewritten setfiles found"
