@@ -650,6 +650,8 @@ module ModuleTester
 
       acceptance_env = env.dup
       acceptance_env['BEAKER_HYPERVISOR'] = 'docker'
+      effective_setfile = nil
+      effective_collection = nil
 
       if @options[:beaker_setfile] && !puppet_core_api_key.empty?
         # Inject Puppet Core agent install into the setfile so the container
@@ -661,13 +663,34 @@ module ModuleTester
         )
         acceptance_env['BEAKER_SETFILE'] = effective_setfile
         acceptance_env['BEAKER_PUPPET_COLLECTION'] = 'preinstalled'
+        effective_collection = 'preinstalled'
       elsif @options[:beaker_setfile]
         # No API key — fall back to FOSS puppet from public yum.puppet.com
-        acceptance_env['BEAKER_SETFILE'] = File.expand_path(@options[:beaker_setfile])
-        acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
+        effective_setfile = File.expand_path(@options[:beaker_setfile])
+        effective_collection = "puppet#{profile.fetch('puppet_major')}"
+        acceptance_env['BEAKER_SETFILE'] = effective_setfile
+        acceptance_env['BEAKER_PUPPET_COLLECTION'] = effective_collection
       else
-        acceptance_env['BEAKER_PUPPET_COLLECTION'] = "puppet#{profile.fetch('puppet_major')}"
+        effective_collection = "puppet#{profile.fetch('puppet_major')}"
+        acceptance_env['BEAKER_PUPPET_COLLECTION'] = effective_collection
       end
+
+      diag_lines = []
+      diag_lines << "BEAKER_SETFILE=#{effective_setfile}" if effective_setfile
+      diag_lines << "BEAKER_PUPPET_COLLECTION=#{effective_collection}" if effective_collection
+      diag_lines << "BEAKER_HYPERVISOR=#{acceptance_env['BEAKER_HYPERVISOR']}"
+      if effective_setfile && File.exist?(effective_setfile)
+        diag_lines << "--- Effective setfile content ---"
+        diag_lines << File.read(effective_setfile)
+      end
+      result[:stages] << StageResult.new(
+        name: 'acceptance_env',
+        status: 'passed',
+        command: nil,
+        exit_code: 0,
+        duration_seconds: 0,
+        output: diag_lines.join("\n")
+      )
 
       result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, acceptance_env)
     end

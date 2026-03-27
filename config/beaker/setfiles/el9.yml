@@ -1,6 +1,7 @@
 HOSTS:
   el9-default:
     platform: el-9-x86_64
+    ip: 127.0.0.1
     image: rockylinux:9
     hypervisor: docker
     docker_image_commands:

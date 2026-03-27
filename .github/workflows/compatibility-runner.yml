@@ -370,6 +370,44 @@ jobs:
             --workspace-dir w \
             --output-dir "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}"
 
+      - name: Debug Beaker container connectivity
+        if: steps.run_runner.outcome == 'failure'
+        shell: bash
+        run: |
+          set +e
+          echo "---- Runner workspace tree (top) ----"
+          find w -maxdepth 4 -type d | sort
+          echo "---- Effective setfiles ----"
+          if [ -d "w/.beaker-setfiles" ]; then
+            ls -la "w/.beaker-setfiles"
+            for f in w/.beaker-setfiles/*.yml; do
+              [ -f "$f" ] || continue
+              echo "===== $f ====="
+              cat "$f"
+            done
+          else
+            echo "No rewritten setfiles found"
+          fi
+
+          echo "---- Docker containers ----"
+          docker ps -a || true
+          echo "---- Docker networks ----"
+          docker network ls || true
+          echo "---- Candidate container inspect ----"
+          cid=$(docker ps -aq --filter "name=el9-default" | head -n1)
+          if [ -n "$cid" ]; then
+            docker inspect "$cid" || true
+            echo "---- Container logs ----"
+            docker logs "$cid" || true
+            echo "---- Port mapping ----"
+            docker port "$cid" || true
+          else
+            echo "No container matching name=el9-default"
+          fi
+
+          echo "---- Runner /etc/hosts ----"
+          cat /etc/hosts || true
+
       - name: Record module status
         if: always()
         shell: bash
