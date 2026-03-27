@@ -653,13 +653,21 @@ module ModuleTester
       effective_collection = nil
 
       if @options[:beaker_setfile] && !puppet_core_api_key.empty?
-        # Inject Puppet Core agent install into the setfile so the container
-        # ships with an authenticated Puppet Core build pre-installed.
-        effective_setfile = prepare_puppet_core_setfile(
+        # Stage 1: Build a Docker image with Puppet Core pre-installed.
+        # The API key is used only during the build and is NOT passed to
+        # the acceptance test environment, so untrusted module test code
+        # cannot read it.
+        image_tag, build_stage = build_puppet_core_image(
           @options[:beaker_setfile],
           profile.fetch('puppet_major'),
           puppet_core_api_key
         )
+        result[:stages] << build_stage
+        return if build_stage.status != 'passed'
+
+        # Stage 2: Write a clean setfile that references the pre-built
+        # image — no secrets embedded anywhere.
+        effective_setfile = write_clean_setfile(@options[:beaker_setfile], image_tag)
         acceptance_env['BEAKER_SETFILE'] = effective_setfile
         acceptance_env['BEAKER_PUPPET_COLLECTION'] = 'preinstalled'
         effective_collection = 'preinstalled'
@@ -674,14 +682,16 @@ module ModuleTester
         acceptance_env['BEAKER_PUPPET_COLLECTION'] = effective_collection
       end
 
+      # Strip all secrets from the env before running untrusted test code.
+      strip_secrets_from_env!(acceptance_env)
+
       diag_lines = []
       diag_lines << "BEAKER_SETFILE=#{effective_setfile}" if effective_setfile
       diag_lines << "BEAKER_PUPPET_COLLECTION=#{effective_collection}" if effective_collection
       diag_lines << "BEAKER_HYPERVISOR=#{acceptance_env['BEAKER_HYPERVISOR']}"
       if effective_setfile && File.exist?(effective_setfile)
-        sanitized_setfile = redact_sensitive(File.read(effective_setfile))
         diag_lines << "--- Effective setfile content ---"
-        diag_lines << sanitized_setfile
+        diag_lines << File.read(effective_setfile)
       end
       result[:stages] << StageResult.new(
         name: 'acceptance_env',
@@ -689,34 +699,97 @@ module ModuleTester
         command: nil,
         exit_code: 0,
         duration_seconds: 0,
-        output: redact_sensitive(diag_lines.join("\n"))
+        output: diag_lines.join("\n")
       )
 
       result[:stages] << run_stage('acceptance', ['bundle', 'exec', 'rake', 'beaker'], module_dir, acceptance_env)
     end
 
-    # Reads the base setfile YAML, appends docker_image_commands that install
-    # puppet-agent from the authenticated Puppet Core yum/apt repository, and
-    # writes the result to a temp file.  Returns the absolute path to the temp
-    # file.  The temp file lives in the workspace dir so it survives until the
-    # runner process exits.
-    def prepare_puppet_core_setfile(base_path, puppet_major, api_key)
-      base = YAML.safe_load(File.read(base_path), permitted_classes: [Symbol])
+    # Builds a Docker image with puppet-agent from authenticated Puppet Core
+    # repos.  The API key is used ONLY during the docker build and is removed
+    # from the resulting image layers.  Returns [image_tag, StageResult].
+    def build_puppet_core_image(base_setfile_path, puppet_major, api_key)
+      base = YAML.safe_load(File.read(base_setfile_path), permitted_classes: [Symbol])
+      hosts_key = base['HOSTS']&.keys&.first
+      raise "No HOSTS entry found in setfile #{base_setfile_path}" unless hosts_key
 
+      host_cfg = base['HOSTS'][hosts_key]
+      base_image = host_cfg['image'].to_s
+      platform = host_cfg['platform'].to_s
+      variant, version, _arch = platform.split('-', 3)
+      existing_cmds = host_cfg['docker_image_commands'] || []
+
+      image_tag = "puppet-core-sut:#{File.basename(base_setfile_path, '.*')}"
+      dockerfile = puppet_core_dockerfile(base_image, existing_cmds, variant, version, puppet_major)
+
+      build_dir = File.join(@options[:workspace_dir], '.docker-build')
+      FileUtils.mkdir_p(build_dir)
+      dockerfile_path = File.join(build_dir, 'Dockerfile')
+      File.write(dockerfile_path, dockerfile)
+
+      # Build with --build-arg so the key is transient and not in image metadata.
+      # The Dockerfile removes credentials from repo files in the same layer.
+      build_cmd = [
+        'docker', 'build',
+        '--no-cache',
+        '--build-arg', "PUPPET_CORE_API_KEY=#{api_key}",
+        '-t', image_tag,
+        '-f', dockerfile_path,
+        build_dir
+      ]
+
+      stage = run_stage('build_sut_image', build_cmd, build_dir, ENV.to_h)
+      [image_tag, stage]
+    end
+
+    # Generates a Dockerfile that installs puppet-agent from Puppet Core repos.
+    # Credentials are injected via ARG, used for install, then scrubbed in the
+    # same RUN layer so they never persist in the final image.
+    def puppet_core_dockerfile(base_image, setup_commands, variant, version, puppet_major)
+      collection = "puppet#{puppet_major}"
+      lines = []
+      lines << "FROM #{base_image}"
+
+      # Run the base setfile setup commands (cronie, initscripts, etc.)
+      setup_commands.each { |cmd| lines << "RUN #{cmd}" } unless setup_commands.empty?
+
+      lines << "ARG PUPPET_CORE_API_KEY"
+
+      case variant
+      when 'el', 'centos', 'redhat', 'rocky', 'alma', 'fedora', 'amazon'
+        release_rpm = "https://yum-puppetcore.puppet.com/public/#{collection}-release-#{variant}-#{version}.noarch.rpm"
+        repo_file = "/etc/yum.repos.d/#{collection}-release.repo"
+        lines << "RUN rpm -Uvh #{release_rpm} \\" \
+                 "\n && sed -i '/^\\[#{collection}\\]/a username=forge-key\\npassword='\"$PUPPET_CORE_API_KEY\" #{repo_file} \\" \
+                 "\n && dnf install -y puppet-agent || yum install -y puppet-agent \\" \
+                 "\n && sed -i '/^username=/d; /^password=/d' #{repo_file}"
+      when 'debian', 'ubuntu'
+        release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(. /etc/os-release && echo $VERSION_CODENAME).deb"
+        auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
+        lines << "RUN apt-get update -qq && apt-get install -y wget \\" \
+                 "\n && wget -O /tmp/#{collection}-release.deb \"#{release_deb_url}\" \\" \
+                 "\n && dpkg -i /tmp/#{collection}-release.deb \\" \
+                 "\n && mkdir -p /etc/apt/auth.conf.d \\" \
+                 "\n && echo \"machine apt-puppetcore.puppet.com login forge-key password $PUPPET_CORE_API_KEY\" > #{auth_file} \\" \
+                 "\n && apt-get update -qq && apt-get install -y puppet-agent \\" \
+                 "\n && rm -f #{auth_file}"
+      else
+        raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
+      end
+
+      lines.join("\n") + "\n"
+    end
+
+    # Writes a clean setfile YAML that references a pre-built local image.
+    # No secrets are embedded in this file.
+    def write_clean_setfile(base_path, image_tag)
+      base = YAML.safe_load(File.read(base_path), permitted_classes: [Symbol])
       hosts_key = base['HOSTS']&.keys&.first
       raise "No HOSTS entry found in setfile #{base_path}" unless hosts_key
 
       host_cfg = base['HOSTS'][hosts_key]
-      host_cfg['ip'] = '127.0.0.1'
-      host_cfg['hostname'] = 'localhost'
-      host_cfg['vmhostname'] = 'localhost'
-      platform = host_cfg['platform'].to_s           # e.g. "el-9-x86_64"
-      variant, version, _arch = platform.split('-', 3)
-
-      install_cmds = puppet_core_install_commands(variant, version, puppet_major, api_key)
-
-      existing_cmds = host_cfg['docker_image_commands'] || []
-      host_cfg['docker_image_commands'] = existing_cmds + install_cmds
+      host_cfg['image'] = image_tag
+      host_cfg['docker_image_commands'] = []  # everything is in the pre-built image
 
       out_dir = File.join(@options[:workspace_dir], '.beaker-setfiles')
       FileUtils.mkdir_p(out_dir)
@@ -725,34 +798,15 @@ module ModuleTester
       File.expand_path(out_path)
     end
 
-    def puppet_core_install_commands(variant, version, puppet_major, api_key)
-      collection = "puppet#{puppet_major}"
-
-      case variant
-      when 'el', 'centos', 'redhat', 'rocky', 'alma', 'fedora', 'amazon'
-        release_rpm = "https://yum-puppetcore.puppet.com/public/#{collection}-release-#{variant}-#{version}.noarch.rpm"
-        repo_file = "/etc/yum.repos.d/#{collection}-release.repo"
-        [
-          "rpm -Uvh #{release_rpm}",
-          "sed -i '/^#\\?username=/d; /^#\\?password=/d; /^\\[#{collection}\\]/a username=forge-key\\npassword=#{api_key}' #{repo_file}",
-          "dnf install -y puppet-agent || yum install -y puppet-agent",
-        ]
-      when 'debian', 'ubuntu'
-        codename_cmd = ". /etc/os-release && echo $VERSION_CODENAME"
-        release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(#{codename_cmd}).deb"
-        auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
-        repo_host = 'apt-puppetcore.puppet.com'
-        [
-          "apt-get update -qq && apt-get install -y wget",
-          "wget -O /tmp/#{collection}-release.deb \"#{release_deb_url}\"",
-          "dpkg -i /tmp/#{collection}-release.deb",
-          "mkdir -p /etc/apt/auth.conf.d",
-          "echo 'machine #{repo_host} login forge-key password #{api_key}' > #{auth_file}",
-          "apt-get update -qq && apt-get install -y puppet-agent",
-        ]
-      else
-        raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
-      end
+    # Removes all secret-bearing keys from an env hash so that untrusted
+    # subprocess code cannot read them.
+    def strip_secrets_from_env!(env)
+      %w[
+        PUPPET_CORE_API_KEY
+        PASSWORD
+        USERNAME
+        BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM
+      ].each { |key| env.delete(key) }
     end
 
     def downgrade_puppet_server_default_unit_failure(result, unit_stage)
