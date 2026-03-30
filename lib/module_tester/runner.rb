@@ -730,46 +730,53 @@ module ModuleTester
       return [image_tag, failed_stage('build_sut_image', "Docker build directory missing: #{build_dir}")] unless Dir.exist?(build_dir)
       return [image_tag, failed_stage('build_sut_image', "Dockerfile missing: #{dockerfile_path}")] unless File.exist?(dockerfile_path)
 
-      # Build with --build-arg so the key is transient and not in image metadata.
-      # The Dockerfile removes credentials from repo files in the same layer.
+      # Build with BuildKit secrets so the key is never stored in image metadata.
       build_cmd = [
         'docker', 'build',
         '--no-cache',
-        '--build-arg', "PUPPET_CORE_API_KEY=#{api_key}",
+        '--secret', 'id=puppet_core_api_key,env=PUPPET_CORE_API_KEY',
         '-t', image_tag,
         '-f', 'Dockerfile',
         '.'
       ]
 
-      stage = run_stage('build_sut_image', build_cmd, build_dir, ENV.to_h)
+      build_env = ENV.to_h.merge(
+        'DOCKER_BUILDKIT' => '1',
+        'PUPPET_CORE_API_KEY' => api_key
+      )
+
+      stage = run_stage('build_sut_image', build_cmd, build_dir, build_env)
       [image_tag, stage]
     end
 
     # Generates a Dockerfile that installs puppet-agent from Puppet Core repos.
-    # Credentials are injected via ARG, used for install, then scrubbed in the
-    # same RUN layer so they never persist in the final image.
+    # Credentials are consumed from a BuildKit secret mount and are never stored
+    # in image layers or build metadata.
     def puppet_core_dockerfile(base_image, setup_commands, variant, version, puppet_major)
       collection = "puppet#{puppet_major}"
       lines = []
+      lines << '# syntax=docker/dockerfile:1.4'
       lines << "FROM #{base_image}"
 
       # Run the base setfile setup commands (cronie, initscripts, etc.)
       setup_commands.each { |cmd| lines << "RUN #{cmd}" } unless setup_commands.empty?
 
-      lines << "ARG PUPPET_CORE_API_KEY"
-
       case variant
       when 'el', 'centos', 'redhat', 'rocky', 'alma', 'fedora', 'amazon'
         release_rpm = "https://yum-puppetcore.puppet.com/public/#{collection}-release-#{variant}-#{version}.noarch.rpm"
         repo_file = "/etc/yum.repos.d/#{collection}-release.repo"
-        lines << "RUN rpm -Uvh #{release_rpm} \\" \
+        lines << "RUN --mount=type=secret,id=puppet_core_api_key \\" \
+                 "\n PUPPET_CORE_API_KEY=\"$(cat /run/secrets/puppet_core_api_key)\" \\" \
+                 "\n && rpm -Uvh #{release_rpm} \\" \
                  "\n && sed -i '/^\\[#{collection}\\]/a username=forge-key\\npassword='\"$PUPPET_CORE_API_KEY\" #{repo_file} \\" \
                  "\n && dnf install -y puppet-agent || yum install -y puppet-agent \\" \
                  "\n && rm -f #{repo_file}"
       when 'debian', 'ubuntu'
         release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(. /etc/os-release && echo $VERSION_CODENAME).deb"
         auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
-        lines << "RUN apt-get update -qq && apt-get install -y wget \\" \
+        lines << "RUN --mount=type=secret,id=puppet_core_api_key \\" \
+                 "\n PUPPET_CORE_API_KEY=\"$(cat /run/secrets/puppet_core_api_key)\" \\" \
+                 "\n && apt-get update -qq && apt-get install -y wget \\" \
                  "\n && wget -O /tmp/#{collection}-release.deb \"#{release_deb_url}\" \\" \
                  "\n && dpkg -i /tmp/#{collection}-release.deb \\" \
                  "\n && mkdir -p /etc/apt/auth.conf.d \\" \
