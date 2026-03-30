@@ -355,6 +355,48 @@ jobs:
         env:
           MODULE_JSON: ${{ toJson(matrix.module) }}
 
+      - name: Seed Beaker host mappings
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          setfile="config/beaker/setfiles/${{ matrix.module.setfile }}.yml"
+          echo "Reading host entries from $setfile"
+
+          ruby -ryaml -e "
+            data = YAML.safe_load(File.read(ARGV[0]), permitted_classes: [Symbol])
+            hosts = data.fetch('HOSTS', {})
+            hosts.each do |name, cfg|
+              next unless cfg.is_a?(Hash)
+              ip = cfg['ip'].to_s.strip
+              next if ip.empty?
+              puts \"#{ip} #{name}\"
+            end
+          " "$setfile" > .tmp/beaker-host-mappings.txt
+
+          if [ ! -s .tmp/beaker-host-mappings.txt ]; then
+            echo "No explicit host mappings found in setfile"
+            exit 0
+          fi
+
+          while read -r ip host; do
+            [ -n "$ip" ] || continue
+            [ -n "$host" ] || continue
+
+            if getent hosts "$host" > /dev/null; then
+              echo "Host already resolvable: $host"
+            else
+              echo "Adding host mapping: $ip $host"
+              echo "$ip $host" | sudo tee -a /etc/hosts > /dev/null
+            fi
+          done < .tmp/beaker-host-mappings.txt
+
+          echo "---- Relevant /etc/hosts entries ----"
+          while read -r _ host; do
+            [ -n "$host" ] || continue
+            getent hosts "$host" || true
+          done < .tmp/beaker-host-mappings.txt
+
       - name: Run compatibility runner (acceptance lane)
         id: run_runner
         continue-on-error: true
@@ -407,6 +449,18 @@ jobs:
 
           echo "---- Runner /etc/hosts ----"
           cat /etc/hosts || true
+          echo "---- Hostname resolution check ----"
+          getent hosts el9-default || true
+
+          if [ -n "$cid" ]; then
+            echo "---- In-container process/listener checks ----"
+            docker exec "$cid" sh -lc "ps -ef | grep [s]shd || true" || true
+            docker exec "$cid" sh -lc "ss -lntp || netstat -lntp || true" || true
+            echo "---- In-container /etc/hosts ----"
+            docker exec "$cid" cat /etc/hosts || true
+            echo "---- In-container /etc/resolv.conf ----"
+            docker exec "$cid" cat /etc/resolv.conf || true
+          fi
 
       - name: Record module status
         if: always()
