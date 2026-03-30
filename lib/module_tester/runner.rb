@@ -721,11 +721,14 @@ module ModuleTester
 
       image_tag = "puppet-core-sut:#{File.basename(base_setfile_path, '.*')}"
       dockerfile = puppet_core_dockerfile(base_image, existing_cmds, variant, version, puppet_major)
+      return [image_tag, failed_stage('build_sut_image', 'Docker CLI not found in PATH')] unless command_available?('docker')
 
-      build_dir = File.join(@options[:workspace_dir], '.docker-build')
+      build_dir = File.expand_path(File.join(@options[:workspace_dir], '.docker-build'))
       FileUtils.mkdir_p(build_dir)
       dockerfile_path = File.join(build_dir, 'Dockerfile')
       File.write(dockerfile_path, dockerfile)
+      return [image_tag, failed_stage('build_sut_image', "Docker build directory missing: #{build_dir}")] unless Dir.exist?(build_dir)
+      return [image_tag, failed_stage('build_sut_image', "Dockerfile missing: #{dockerfile_path}")] unless File.exist?(dockerfile_path)
 
       # Build with --build-arg so the key is transient and not in image metadata.
       # The Dockerfile removes credentials from repo files in the same layer.
@@ -734,8 +737,8 @@ module ModuleTester
         '--no-cache',
         '--build-arg', "PUPPET_CORE_API_KEY=#{api_key}",
         '-t', image_tag,
-        '-f', dockerfile_path,
-        build_dir
+        '-f', 'Dockerfile',
+        '.'
       ]
 
       stage = run_stage('build_sut_image', build_cmd, build_dir, ENV.to_h)
