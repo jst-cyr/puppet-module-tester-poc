@@ -765,7 +765,7 @@ module ModuleTester
         lines << "RUN rpm -Uvh #{release_rpm} \\" \
                  "\n && sed -i '/^\\[#{collection}\\]/a username=forge-key\\npassword='\"$PUPPET_CORE_API_KEY\" #{repo_file} \\" \
                  "\n && dnf install -y puppet-agent || yum install -y puppet-agent \\" \
-                 "\n && sed -i '/^username=/d; /^password=/d' #{repo_file}"
+                 "\n && rm -f #{repo_file}"
       when 'debian', 'ubuntu'
         release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(. /etc/os-release && echo $VERSION_CODENAME).deb"
         auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
