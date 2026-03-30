@@ -1013,6 +1013,7 @@ module ModuleTester
           bootstrap
           bootstrap_dependency_patch
           bootstrap_puppet_core_retry
+          build_sut_image
           rake_tasks
           pdk_version
         ].include?(stage.name)
