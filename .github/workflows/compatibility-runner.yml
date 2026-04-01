@@ -98,6 +98,14 @@ jobs:
           acceptance-target: unit
           prereqs-json: ${{ toJson(matrix.module.prereqs) }}
 
+      - name: Upload module artifacts (unit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.module.id }}-unit
+          path: o/${{ matrix.module.id }}
+          if-no-files-found: warn
+
   test_acceptance:
     name: test / ${{ matrix.module.id }} / acceptance / ${{ matrix.module.target_id }}
     runs-on: ${{ matrix.module.os }}
@@ -182,6 +190,24 @@ jobs:
           test-lane: acceptance
           acceptance-target: ${{ matrix.module.target }}
           prereqs-json: ${{ toJson(matrix.module.prereqs) }}
+
+      - name: Upload module artifacts (acceptance)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}
+          path: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}
+          if-no-files-found: warn
+
+      - name: Upload acceptance fallback diagnostics
+        if: ${{ always() && (failure() || cancelled()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}-diagnostics
+          path: |
+            o/${{ matrix.module.id }}-${{ matrix.module.target_id }}
+            .tmp/beaker-host-mappings.txt
+          if-no-files-found: warn
 
   summarize:
     runs-on: ubuntu-latest

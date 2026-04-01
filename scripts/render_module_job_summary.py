@@ -19,6 +19,14 @@ def main() -> int:
     module_id = os.environ['MODULE_ID']
     status_file = os.environ['STATUS_FILE']
     summary_path = os.environ['GITHUB_STEP_SUMMARY']
+    artifact_name = os.environ.get('ARTIFACT_NAME', '')
+    github_server_url = os.environ.get('GITHUB_SERVER_URL', '')
+    github_repository = os.environ.get('GITHUB_REPOSITORY', '')
+    github_run_id = os.environ.get('GITHUB_RUN_ID', '')
+
+    artifact_url = ''
+    if github_server_url and github_repository and github_run_id:
+        artifact_url = f'{github_server_url}/{github_repository}/actions/runs/{github_run_id}#artifacts'
 
     status = load_json(status_file)
     if not status:
@@ -64,6 +72,10 @@ def main() -> int:
     append_line(summary_path, f'- Documentation: {documentation_status}')
     if documentation_message:
         append_line(summary_path, f'  - {documentation_message}')
+    if artifact_name:
+        append_line(summary_path, f'- Artifact name: {artifact_name}')
+    if artifact_url:
+        append_line(summary_path, f'- Artifacts: {artifact_url}')
     append_line(summary_path, '')
     return 0
 
