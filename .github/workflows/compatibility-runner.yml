@@ -49,61 +49,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ruby -rjson <<'RUBY' > .tmp-matrix.json
-          raw = '${{ github.event.inputs.modules_json }}'.strip
-          modules = raw.empty? ? JSON.parse(File.read('config/modules.json')).fetch('modules', []) : JSON.parse(raw)
-
-          unit = []
-          acceptance = []
-
-          modules.each do |m|
-            repo = m.fetch('repo')
-            ref = m.fetch('ref', 'main')
-            id = m['id'] || repo.sub(%r{/$}, '').split('/').last.sub(/\.git$/, '').gsub(/[^a-zA-Z0-9_.-]+/, '-')
-            os = m.fetch('os', 'ubuntu-latest')
-            prereqs = m.fetch('prereqs', {})
-
-            unit << {
-              'repo' => repo,
-              'ref' => ref,
-              'id' => id,
-              'os' => os,
-              'prereqs' => prereqs,
-              'lane' => 'unit',
-              'target' => 'unit'
-            }
-
-            acceptance_cfg = m['acceptance']
-            next unless acceptance_cfg.is_a?(Hash) && acceptance_cfg['enabled']
-
-            targets = acceptance_cfg['targets']
-            next unless targets.is_a?(Array)
-
-            targets.each do |target|
-              next unless target.is_a?(Hash)
-
-              target_name = target.fetch('name')
-              target_id = target_name.gsub(/[^a-zA-Z0-9_.-]+/, '-')
-              acceptance << {
-                'repo' => repo,
-                'ref' => ref,
-                'id' => id,
-                'os' => 'ubuntu-latest',
-                'prereqs' => prereqs,
-                'lane' => 'acceptance',
-                'target' => target_name,
-                'target_id' => target_id,
-                'setfile' => target.fetch('setfile')
-              }
-            end
-          end
-
-          puts JSON.generate({
-            'unit_matrix' => unit,
-            'acceptance_matrix' => acceptance,
-            'has_acceptance' => (!acceptance.empty?).to_s
-          })
-          RUBY
+          OVERRIDE='${{ github.event.inputs.modules_json }}'
+          ruby scripts/build_matrix.rb "$OVERRIDE" > .tmp-matrix.json
 
           UNIT_MATRIX=$(python -c "import json; print(json.dumps(json.load(open('.tmp-matrix.json', encoding='utf-8'))['unit_matrix']))")
           ACCEPTANCE_MATRIX=$(python -c "import json; print(json.dumps(json.load(open('.tmp-matrix.json', encoding='utf-8'))['acceptance_matrix']))")
@@ -134,139 +81,19 @@ jobs:
       PUPPET_STAGE_TIMEOUT_SECONDS: ${{ vars.PUPPET_STAGE_TIMEOUT_SECONDS || '1800' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Enable Git long paths on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          git config --global core.longpaths true
-          git config --global --get core.longpaths
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Run module compatibility test
+        uses: ./.github/actions/run-module-test
         with:
-          python-version: '3.11'
-
-      - name: Install module prerequisites on Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          apt_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('apt',[]); print(' '.join(pkgs)) if pkgs else None")
-          if [ -n "$apt_pkgs" ]; then
-            sudo apt-get update -qq
-            sudo apt-get install -y $apt_pkgs
-          fi
-
-      - name: Install module prerequisites on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $prereqs = '${{ toJson(matrix.module.prereqs) }}' | ConvertFrom-Json
-          if ($null -ne $prereqs -and $null -ne $prereqs.choco -and $prereqs.choco.Count -gt 0) {
-            choco install -y @($prereqs.choco)
-          }
-
-      - name: Install module prerequisites on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('brew',[]); print(' '.join(pkgs)) if pkgs else None")
-          if [ -n "$brew_pkgs" ]; then
-            brew update
-            brew install $brew_pkgs
-          fi
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
-
-      - name: Install runner
-        run: |
-          bundle install
-
-      - name: Build single-module config
-        shell: bash
-        run: |
-          mkdir -p .tmp
-          ruby -rjson -e "mod=JSON.parse(ENV.fetch('MODULE_JSON')); File.write('.tmp/single-module.json', JSON.pretty_generate({'modules'=>[{'repo'=>mod.fetch('repo'),'ref'=>mod.fetch('ref','main')}] }))"
-        env:
-          MODULE_JSON: ${{ toJson(matrix.module) }}
-
-      - name: Run compatibility runner
-        id: run_runner
-        continue-on-error: true
-        shell: bash
-        run: |
-          ruby bin/puppet-module-tester \
-            --modules-file .tmp/single-module.json \
-            --profiles-file profiles/puppet_profiles.json \
-            --profile "${{ github.event.inputs.profile || '8-latest-maintained' }}" \
-            --test-mode unit \
-            --workspace-dir w \
-            --output-dir "o/${{ matrix.module.id }}"
-
-      - name: Record module status
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "o/${{ matrix.module.id }}"
-          python scripts/classify_module_result.py
-        env:
-          REPORT: o/${{ matrix.module.id }}/compatibility-report.json
-          STATUS_FILE: o/${{ matrix.module.id }}/module-status.json
-          MODULE_ID: ${{ matrix.module.id }}
-          TEST_LANE: unit
-          ACCEPTANCE_TARGET: unit
-
-      - name: Write module summary
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/render_module_job_summary.py
-        env:
-          STATUS_FILE: o/${{ matrix.module.id }}/module-status.json
-          MODULE_ID: ${{ matrix.module.id }}
-
-      - name: Upload module artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compatibility-${{ matrix.module.id }}-unit
-          path: o/${{ matrix.module.id }}
-          if-no-files-found: warn
-
-      - name: Show failure diagnostics
-        if: steps.run_runner.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "Runner failed for module: ${{ matrix.module.id }}"
-          echo "---- module-status.json ----"
-          if [ -f "o/${{ matrix.module.id }}/module-status.json" ]; then
-            cat "o/${{ matrix.module.id }}/module-status.json"
-          else
-            echo "module-status file not found"
-          fi
-          echo "---- compatibility-summary.md ----"
-          if [ -f "o/${{ matrix.module.id }}/compatibility-summary.md" ]; then
-            cat "o/${{ matrix.module.id }}/compatibility-summary.md"
-          else
-            echo "summary file not found"
-          fi
-          echo "---- compatibility-report.json (first 200 lines) ----"
-          if [ -f "o/${{ matrix.module.id }}/compatibility-report.json" ]; then
-            sed -n '1,200p' "o/${{ matrix.module.id }}/compatibility-report.json"
-          else
-            echo "report file not found"
-          fi
-          exit 1
+          module-json: ${{ toJson(matrix.module) }}
+          module-id: ${{ matrix.module.id }}
+          profile: ${{ github.event.inputs.profile || '8-latest-maintained' }}
+          metadata-mode: ${{ github.event.inputs.metadata_mode || 'warn' }}
+          test-mode: unit
+          output-dir: o/${{ matrix.module.id }}
+          artifact-name: compatibility-${{ matrix.module.id }}-unit
+          test-lane: unit
+          acceptance-target: unit
+          prereqs-json: ${{ toJson(matrix.module.prereqs) }}
 
   test_acceptance:
     name: test / ${{ matrix.module.id }} / acceptance / ${{ matrix.module.target_id }}
@@ -291,69 +118,8 @@ jobs:
       PUPPET_STAGE_TIMEOUT_SECONDS: ${{ vars.PUPPET_STAGE_TIMEOUT_SECONDS || '1800' }}
 
     steps:
-      - name: Checkout
+      - name: Checkout (for Beaker host seeding)
         uses: actions/checkout@v4
-
-      - name: Enable Git long paths on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          git config --global core.longpaths true
-          git config --global --get core.longpaths
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install module prerequisites on Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          apt_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('apt',[]); print(' '.join(pkgs)) if pkgs else None")
-          if [ -n "$apt_pkgs" ]; then
-            sudo apt-get update -qq
-            sudo apt-get install -y $apt_pkgs
-          fi
-
-      - name: Install module prerequisites on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $prereqs = '${{ toJson(matrix.module.prereqs) }}' | ConvertFrom-Json
-          if ($null -ne $prereqs -and $null -ne $prereqs.choco -and $prereqs.choco.Count -gt 0) {
-            choco install -y @($prereqs.choco)
-          }
-
-      - name: Install module prerequisites on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew_pkgs=$(echo '${{ toJson(matrix.module.prereqs) }}' | python -c "import json,sys; d=json.load(sys.stdin); pkgs=d.get('brew',[]); print(' '.join(pkgs)) if pkgs else None")
-          if [ -n "$brew_pkgs" ]; then
-            brew update
-            brew install $brew_pkgs
-          fi
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
-
-      - name: Install runner
-        run: |
-          bundle install
-
-      - name: Build single-module config
-        shell: bash
-        run: |
-          mkdir -p .tmp
-          ruby -rjson -e "mod=JSON.parse(ENV.fetch('MODULE_JSON')); File.write('.tmp/single-module.json', JSON.pretty_generate({'modules'=>[{'repo'=>mod.fetch('repo'),'ref'=>mod.fetch('ref','main')}] }))"
-        env:
-          MODULE_JSON: ${{ toJson(matrix.module) }}
 
       - name: Seed Beaker host mappings
         if: runner.os == 'Linux'
@@ -397,77 +163,21 @@ jobs:
             getent hosts "$host" || true
           done < .tmp/beaker-host-mappings.txt
 
-      - name: Run compatibility runner (acceptance lane)
-        id: run_runner
-        continue-on-error: true
-        shell: bash
-        run: |
-          ruby bin/puppet-module-tester \
-            --modules-file .tmp/single-module.json \
-            --profiles-file profiles/puppet_profiles.json \
-            --profile "${{ github.event.inputs.profile || '8-latest-maintained' }}" \
-            --allow-acceptance \
-            --test-mode acceptance \
-            --beaker-setfile "config/beaker/setfiles/${{ matrix.module.setfile }}.yml" \
-            --workspace-dir w \
-            --output-dir "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}"
-
-      - name: Record module status
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}"
-          python scripts/classify_module_result.py
-        env:
-          REPORT: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/compatibility-report.json
-          STATUS_FILE: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/module-status.json
-          MODULE_ID: ${{ matrix.module.id }}
-          TEST_LANE: acceptance
-          ACCEPTANCE_TARGET: ${{ matrix.module.target }}
-
-      - name: Write module summary
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/render_module_job_summary.py
-        env:
-          STATUS_FILE: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/module-status.json
-          MODULE_ID: ${{ matrix.module.id }}
-
-      - name: Upload module artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Run module compatibility test (acceptance)
+        uses: ./.github/actions/run-module-test
         with:
-          name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}
-          path: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}
-          if-no-files-found: warn
-
-      - name: Show acceptance diagnostics
-        if: steps.run_runner.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "Acceptance runner failed for module: ${{ matrix.module.id }} (target: ${{ matrix.module.target }})"
-          echo "---- module-status.json ----"
-          if [ -f "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/module-status.json" ]; then
-            cat "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/module-status.json"
-          else
-            echo "module-status file not found"
-          fi
-          echo "---- compatibility-summary.md ----"
-          if [ -f "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/compatibility-summary.md" ]; then
-            cat "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/compatibility-summary.md"
-          else
-            echo "summary file not found"
-          fi
-          echo "---- compatibility-report.json (first 200 lines) ----"
-          if [ -f "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/compatibility-report.json" ]; then
-            sed -n '1,200p' "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/compatibility-report.json"
-          else
-            echo "report file not found"
-          fi
-          exit 1
+          module-json: ${{ toJson(matrix.module) }}
+          module-id: ${{ matrix.module.id }}
+          profile: ${{ github.event.inputs.profile || '8-latest-maintained' }}
+          metadata-mode: ${{ github.event.inputs.metadata_mode || 'warn' }}
+          test-mode: acceptance
+          allow-acceptance: 'true'
+          beaker-setfile: config/beaker/setfiles/${{ matrix.module.setfile }}.yml
+          output-dir: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}
+          artifact-name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}
+          test-lane: acceptance
+          acceptance-target: ${{ matrix.module.target }}
+          prereqs-json: ${{ toJson(matrix.module.prereqs) }}
 
   summarize:
     runs-on: ubuntu-latest
