@@ -121,9 +121,9 @@ module ModuleTester
                  "\n && dpkg -i /tmp/#{collection}-release.deb \\" \
                  "\n && mkdir -p /etc/apt/auth.conf.d \\" \
                  "\n && echo \"machine apt-puppetcore.puppet.com login forge-key password $PUPPET_CORE_API_KEY\" > #{auth_file} \\" \
-                 "\n && apt-get update -qq && apt-get install -y puppet-agent \\" \
-                 "\n && rm -f #{auth_file}"
-        lines << 'RUN apt-get update -qq && apt-get install -y openssh-server openssh-client passwd'
+                 "\n && apt-get update -qq && apt-get install -y puppet-agent openssh-server openssh-client passwd \\" \
+                 "\n && rm -f #{auth_file} \\" \
+                 "\n && grep -RIl --exclude-dir=preferences.d apt-puppetcore.puppet.com /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | xargs -r rm -f || true"
       else
         raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
       end
