@@ -1,0 +1,13 @@
+HOSTS:
+  debian12-default:
+    platform: debian-12-x86_64
+    ip: 127.0.0.1
+    image: debian:12
+    hypervisor: docker
+    docker_cmd: /usr/sbin/sshd -D -e
+    docker_image_commands:
+      - apt-get update
+      - DEBIAN_FRONTEND=noninteractive apt-get install -y cron openssh-server wget
+CONFIG:
+  log_level: verbose
+  type: foss
