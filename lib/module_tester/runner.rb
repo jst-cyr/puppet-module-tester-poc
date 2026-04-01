@@ -771,6 +771,7 @@ module ModuleTester
                  "\n && sed -i '/^\\[#{collection}\\]/a username=forge-key\\npassword='\"$PUPPET_CORE_API_KEY\" #{repo_file} \\" \
                  "\n && dnf install -y puppet-agent || yum install -y puppet-agent \\" \
                  "\n && rm -f #{repo_file}"
+        lines << "RUN dnf install -y openssh-server openssh-clients passwd || yum install -y openssh-server openssh-clients passwd"
       when 'debian', 'ubuntu'
         release_deb_url = "https://apt-puppetcore.puppet.com/public/#{collection}-release-$(. /etc/os-release && echo $VERSION_CODENAME).deb"
         auth_file = "/etc/apt/auth.conf.d/#{collection}-puppetcore.conf"
@@ -783,9 +784,22 @@ module ModuleTester
                  "\n && echo \"machine apt-puppetcore.puppet.com login forge-key password $PUPPET_CORE_API_KEY\" > #{auth_file} \\" \
                  "\n && apt-get update -qq && apt-get install -y puppet-agent \\" \
                  "\n && rm -f #{auth_file}"
+        lines << 'RUN apt-get update -qq && apt-get install -y openssh-server openssh-client passwd'
       else
         raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
       end
+
+      # Ensure Beaker can always connect via SSH without depending on systemd init.
+      lines << <<~'RUN_SSH'.strip
+        RUN mkdir -p /var/run/sshd \
+         && ssh-keygen -A \
+         && if grep -Eq '^#?PermitRootLogin' /etc/ssh/sshd_config; then sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config; else echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config; fi \
+         && if grep -Eq '^#?PasswordAuthentication' /etc/ssh/sshd_config; then sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config; else echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config; fi \
+         && if grep -Eq '^#?UsePAM' /etc/ssh/sshd_config; then sed -ri 's/^#?UsePAM.*/UsePAM no/' /etc/ssh/sshd_config; else echo 'UsePAM no' >> /etc/ssh/sshd_config; fi \
+         && echo 'root:root' | chpasswd
+      RUN_SSH
+      lines << 'EXPOSE 22'
+      lines << 'CMD ["/bin/sh", "-lc", "mkdir -p /var/run/sshd; ssh-keygen -A >/dev/null 2>&1 || true; exec /usr/sbin/sshd -D -e"]'
 
       lines.join("\n") + "\n"
     end
