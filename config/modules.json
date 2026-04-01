@@ -2,7 +2,16 @@
   "modules": [
     {
       "repo": "https://github.com/voxpupuli/puppet-alternatives",
-      "ref": "master"
+      "ref": "master",
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
+        ]
+      }
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-archive",
