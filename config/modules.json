@@ -13,10 +13,6 @@
           {
             "name": "ubuntu24",
             "setfile": "ubuntu24"
-          },
-          {
-            "name": "debian12",
-            "setfile": "debian12"
           }
         ]
       }
