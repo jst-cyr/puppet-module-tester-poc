@@ -96,6 +96,8 @@ module ModuleTester
       lines = []
       lines << '# syntax=docker/dockerfile:1.4'
       lines << "FROM #{base_image}"
+      # Ensure Puppet agent binaries are discoverable during Beaker SSH sessions.
+      lines << 'ENV PATH="/opt/puppetlabs/bin:${PATH}"'
 
       # Run the base setfile setup commands (cronie, initscripts, etc.)
       setup_commands.each { |cmd| lines << "RUN #{cmd}" } unless setup_commands.empty?
@@ -122,6 +124,11 @@ module ModuleTester
                  "\n && mkdir -p /etc/apt/auth.conf.d \\" \
                  "\n && echo \"machine apt-puppetcore.puppet.com login forge-key password $PUPPET_CORE_API_KEY\" > #{auth_file} \\" \
                  "\n && apt-get update -qq && apt-get install -y puppet-agent openssh-server openssh-client passwd \\" \
+                 "\n && ln -sf /opt/puppetlabs/bin/puppet /usr/bin/puppet \\" \
+                 "\n && ln -sf /opt/puppetlabs/bin/facter /usr/bin/facter \\" \
+                 "\n && ln -sf /opt/puppetlabs/bin/hiera /usr/bin/hiera \\" \
+                 "\n && command -v puppet \\" \
+                 "\n && puppet --version \\" \
                  "\n && rm -f #{auth_file} \\" \
                  "\n && grep -RIl --exclude-dir=preferences.d apt-puppetcore.puppet.com /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | xargs -r rm -f || true"
       else
