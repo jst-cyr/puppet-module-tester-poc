@@ -81,6 +81,9 @@ jobs:
       PUPPET_STAGE_TIMEOUT_SECONDS: ${{ vars.PUPPET_STAGE_TIMEOUT_SECONDS || '1800' }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Run module compatibility test
         uses: ./.github/actions/run-module-test
         with:
