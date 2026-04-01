@@ -9,6 +9,10 @@
           {
             "name": "el9",
             "setfile": "el9"
+          },
+          {
+            "name": "el10",
+            "setfile": "el10"
           }
         ]
       }
