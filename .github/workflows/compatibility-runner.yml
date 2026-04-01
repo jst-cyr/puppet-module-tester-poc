@@ -129,6 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .tmp
           setfile="config/beaker/setfiles/${{ matrix.module.setfile }}.yml"
           echo "Reading host entries from $setfile"
 
