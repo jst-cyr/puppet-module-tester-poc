@@ -132,8 +132,6 @@ jobs:
       PUPPET_ENFORCE_EXACT_PUPPET_VERSION: "true"
       PUPPET_SPLIT_SOURCES: "true"
       PUPPET_STAGE_TIMEOUT_SECONDS: ${{ vars.PUPPET_STAGE_TIMEOUT_SECONDS || '1800' }}
-      PUPPET_ACCEPTANCE_FAST_FAIL_SSH: "true"
-      PUPPET_ACCEPTANCE_FAIL_AFTER_ECONNRESET: "2"
 
     steps:
       - name: Checkout
@@ -413,76 +411,6 @@ jobs:
             --beaker-setfile "config/beaker/setfiles/${{ matrix.module.setfile }}.yml" \
             --workspace-dir w \
             --output-dir "o/${{ matrix.module.id }}-${{ matrix.module.target_id }}"
-
-      - name: Debug Beaker container connectivity
-        if: steps.run_runner.outcome == 'failure'
-        shell: bash
-        run: |
-          set +e
-          debug_dir="o/${{ matrix.module.id }}-${{ matrix.module.target_id }}/debug"
-          mkdir -p "$debug_dir"
-          debug_log="$debug_dir/beaker-debug.txt"
-          exec > >(tee -a "$debug_log") 2>&1
-
-          echo "Debug log path: $debug_log"
-          echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "---- Runner workspace tree (top) ----"
-          find w -maxdepth 4 -type d | sort
-          echo "---- Effective setfiles ----"
-          if [ -d "w/.beaker-setfiles" ]; then
-            ls -la "w/.beaker-setfiles"
-            for f in w/.beaker-setfiles/*.yml; do
-              [ -f "$f" ] || continue
-              echo "===== $f ====="
-              sed -E 's/password=[^[:space:]]+/password=[REDACTED]/g; s/(login[[:space:]]+forge-key[[:space:]]+password[[:space:]]+)[^[:space:]]+/\1[REDACTED]/g' "$f"
-              cp -f "$f" "$debug_dir/$(basename "$f")"
-            done
-          else
-            echo "No rewritten setfiles found"
-          fi
-
-          echo "---- Docker containers ----"
-          docker ps -a || true
-          docker ps -a > "$debug_dir/docker-ps-a.txt" 2>&1 || true
-          echo "---- Docker networks ----"
-          docker network ls || true
-          docker network ls > "$debug_dir/docker-network-ls.txt" 2>&1 || true
-          echo "---- Candidate container inspect ----"
-          cid=$(docker ps -aq --filter "name=el9-default" | head -n1)
-          if [ -n "$cid" ]; then
-            docker inspect "$cid" || true
-            docker inspect "$cid" > "$debug_dir/container-inspect.json" 2>&1 || true
-            echo "---- Container logs ----"
-            docker logs "$cid" || true
-            docker logs "$cid" > "$debug_dir/container-logs.txt" 2>&1 || true
-            echo "---- Port mapping ----"
-            docker port "$cid" || true
-            docker port "$cid" > "$debug_dir/container-ports.txt" 2>&1 || true
-          else
-            echo "No container matching name=el9-default"
-          fi
-
-          echo "---- Runner /etc/hosts ----"
-          cat /etc/hosts || true
-          cat /etc/hosts > "$debug_dir/runner-etc-hosts.txt" 2>&1 || true
-          echo "---- Hostname resolution check ----"
-          getent hosts el9-default || true
-          getent hosts el9-default > "$debug_dir/runner-getent-el9-default.txt" 2>&1 || true
-
-          if [ -n "$cid" ]; then
-            echo "---- In-container process/listener checks ----"
-            docker exec "$cid" sh -lc "ps -ef | grep [s]shd || true" || true
-            docker exec "$cid" sh -lc "ps -ef | grep [s]shd || true" > "$debug_dir/container-ps-sshd.txt" 2>&1 || true
-            docker exec "$cid" sh -lc "ss -lntp || netstat -lntp || true" || true
-            docker exec "$cid" sh -lc "ss -lntp || netstat -lntp || true" > "$debug_dir/container-listeners.txt" 2>&1 || true
-            echo "---- In-container /etc/hosts ----"
-            docker exec "$cid" cat /etc/hosts || true
-            docker exec "$cid" cat /etc/hosts > "$debug_dir/container-etc-hosts.txt" 2>&1 || true
-            echo "---- In-container /etc/resolv.conf ----"
-            docker exec "$cid" cat /etc/resolv.conf || true
-            docker exec "$cid" cat /etc/resolv.conf > "$debug_dir/container-resolv-conf.txt" 2>&1 || true
-            docker exec "$cid" sh -lc "(/usr/sbin/sshd -t && echo sshd_config_ok) || echo sshd_config_invalid" > "$debug_dir/container-sshd-config-check.txt" 2>&1 || true
-          fi
 
       - name: Record module status
         if: always()

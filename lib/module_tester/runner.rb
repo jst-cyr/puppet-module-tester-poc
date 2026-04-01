@@ -689,10 +689,6 @@ module ModuleTester
       diag_lines << "BEAKER_SETFILE=#{effective_setfile}" if effective_setfile
       diag_lines << "BEAKER_PUPPET_COLLECTION=#{effective_collection}" if effective_collection
       diag_lines << "BEAKER_HYPERVISOR=#{acceptance_env['BEAKER_HYPERVISOR']}"
-      if fast_fail_acceptance_ssh?
-        diag_lines << "PUPPET_ACCEPTANCE_FAST_FAIL_SSH=true"
-        diag_lines << "PUPPET_ACCEPTANCE_FAIL_AFTER_ECONNRESET=#{acceptance_ssh_failure_threshold}"
-      end
       if effective_setfile && File.exist?(effective_setfile)
         diag_lines << "--- Effective setfile content ---"
         diag_lines << File.read(effective_setfile)
@@ -926,7 +922,6 @@ module ModuleTester
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       output_buffer = String.new
       status = nil
-      early_termination_reason = nil
       safe_command = redact_sensitive(command.shelljoin)
       log_file = File.join(cwd, ".stage-#{name}.log")
 
@@ -940,9 +935,6 @@ module ModuleTester
           File.open(log_file, 'w') do |log|
             Open3.popen2e(env, *command, chdir: cwd) do |stdin, combined, wait_thr|
               stdin.close
-              connreset_count = 0
-              fast_fail_enabled = name == 'acceptance' && fast_fail_acceptance_ssh?
-              fast_fail_threshold = acceptance_ssh_failure_threshold
 
               loop do
                 chunk = combined.readpartial(2048)
@@ -951,28 +943,6 @@ module ModuleTester
                 print redacted_chunk
                 log.write(redacted_chunk)
                 log.flush
-
-                next unless fast_fail_enabled
-
-                connreset_count += chunk.scan('Errno::ECONNRESET').length
-                next if connreset_count < fast_fail_threshold
-
-                early_termination_reason = "Fast-fail: detected #{connreset_count} ECONNRESET errors in acceptance; terminating beaker early."
-                puts "  ✗ #{early_termination_reason}"
-                log.write("\n#{early_termination_reason}\n")
-                log.flush
-                begin
-                  Process.kill('TERM', wait_thr.pid)
-                  Timeout.timeout(5) { wait_thr.join }
-                rescue StandardError
-                  begin
-                    Process.kill('KILL', wait_thr.pid)
-                  rescue StandardError
-                    nil
-                  end
-                end
-                status = wait_thr.value
-                break
               end
             rescue EOFError
               status = wait_thr.value
@@ -985,14 +955,12 @@ module ModuleTester
         puts "  ✓ Completed in #{elapsed.round(2)}s (exit: #{status.exitstatus})"
         trimmed_output = output_buffer.to_s
         trimmed_output = trimmed_output[-20_000, 20_000] || trimmed_output
-        trimmed_output = [trimmed_output, early_termination_reason].compact.join("\n") if early_termination_reason
-        stage_failed = !early_termination_reason.nil? || !status.success?
 
         StageResult.new(
           name: name,
-          status: stage_failed ? 'failed' : 'passed',
+          status: status.success? ? 'passed' : 'failed',
           command: safe_command,
-          exit_code: early_termination_reason ? -2 : status.exitstatus,
+          exit_code: status.exitstatus,
           duration_seconds: elapsed.round(2),
           output: redact_sensitive(trimmed_output)
         )
@@ -1023,17 +991,6 @@ module ModuleTester
       return env_value if env_value && env_value.positive?
 
       1800
-    end
-
-    def fast_fail_acceptance_ssh?
-      ENV.fetch('PUPPET_ACCEPTANCE_FAST_FAIL_SSH', 'true') == 'true'
-    end
-
-    def acceptance_ssh_failure_threshold
-      value = Integer(ENV.fetch('PUPPET_ACCEPTANCE_FAIL_AFTER_ECONNRESET', '2'), exception: false)
-      return 2 if value.nil? || value <= 0
-
-      value
     end
 
     def integer_or_nil(raw)
