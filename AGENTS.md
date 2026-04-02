@@ -26,7 +26,7 @@ This file is for coding agents working in this repository.
    - `os`: defaults to `ubuntu-latest` in workflow behavior.
    - `id`: derived from repo name.
 5. Validate against schema before proposing completion.
-6. Update [./docs/available-acceptance-tests.md](Available Acceptance Tests) documentation with information about the module being added. Make sure to update the 'last updated' date as well.
+6. Update [Available Acceptance Tests](./docs/available-acceptance-tests.md) documentation with information about the module being added. Make sure to update the 'last updated' date as well.
 
 ## Decision Rules
 
