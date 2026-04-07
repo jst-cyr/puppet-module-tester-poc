@@ -159,10 +159,36 @@ After all stages complete, the `Classifier` assigns one of these states:
 | State | Meaning |
 |-------|---------|
 | `compatible` | All stages passed; metadata declares support for the target Puppet version. |
-| `conditionally_compatible` | Tests passed but metadata, dependency resolution, or documentation checks raised a warning. |
-| `not_compatible` | One or more test stages failed. |
+| `conditionally_compatible` | Tests passed but one or more soft checks raised a warning (see overrides below). |
+| `not_compatible` | One or more test stages failed with no applicable override. |
 | `inconclusive` | Auth failure, missing acceptance stage, or empty stage list — result cannot be trusted either way. |
-| `harness_error` | A bootstrap or infrastructure stage failed (clone, bundle, docker build, etc.) |
+| `harness_error` | A bootstrap or infrastructure stage failed (clone, bundle, docker build, etc.) — the test never ran. |
+
+#### Classification precedence (unit mode)
+
+The classifier evaluates conditions in this order, stopping at the first match:
+
+1. Auth status is not `ok` → **`harness_error`**
+2. Any harness stage failed (`clone`, `bundle_config_*`, `bootstrap`, `bootstrap_dependency_patch`, `bootstrap_puppet_core_retry`, `build_sut_image`, `rake_tasks`, `pdk_version`) → **`harness_error`**
+3. Any non-bootstrap stage failed → **`not_compatible`** _(subject to downgrade overrides — see below)_
+4. Metadata reports the Puppet version as unsupported **and** `metadata_mode=fail` → **`not_compatible`**
+5. Metadata reports unsupported version (warn mode) → **`conditionally_compatible`**
+6. Dependency status is `warning` → **`conditionally_compatible`**
+7. Documentation status is `warning` → **`conditionally_compatible`**
+8. No stages ran → **`inconclusive`**
+9. Otherwise → **`compatible`**
+
+For **acceptance mode** the logic is simpler: if the `acceptance` stage is absent the result is `inconclusive`; otherwise the stage exit code maps directly to `compatible` or `not_compatible`.
+
+#### Downgrade overrides
+
+Certain known-good failure patterns are recognised and reclassified before the classifier runs. The failing stage is patched to `passed` and a warning record is injected instead, so the final state becomes `conditionally_compatible` rather than `not_compatible`.
+
+| Override | Trigger condition | Reclassified as |
+|----------|-------------------|-----------------|
+| **Puppet 8.12 `server` setting default change** | Unit stage fails; output contains both `"server"=>"puppet"` and `"server"=>""` and there is exactly one `::error` in the output. Caused by the Puppet Core 8.12 breaking change that changed the `server` setting default from `"puppet"` to `""`. | `dependency_status = warning` → stage patched to `passed` → final state `conditionally_compatible` |
+| **Stale `REFERENCE.md`** | Validate stage fails; output contains `REFERENCE.md is outdated`. The module's reference documentation is out of date but this is not a runtime compatibility failure. | `documentation_status = warning` → stage patched to `passed` → final state `conditionally_compatible` |
+| **Gemfile dependency conflict (recovery)** | Bootstrap fails with a Puppet Core gem version conflict. The runner patches the Gemfile to add Puppet Core-compatible constraints and retries `bundle install` once. If the retry succeeds, bootstrap is marked `passed` and `dependency_status = warning` is set. | `dependency_status = warning` → bootstrap patched to `passed` → final state `conditionally_compatible` |
 
 ### Reporting
 
