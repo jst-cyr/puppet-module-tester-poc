@@ -54,6 +54,15 @@ flowchart TD
 
         CL["Classify result"]
         RP["Write reports<br/>JSON · Markdown · Stage logs"]
+        RS["Record module status<br/>classify_module_result.py"]
+        WS["Write per-job summary<br/>render_module_job_summary.py"]
+        UA["Upload artifact<br/>compatibility-&lt;id&gt;-&lt;lane&gt;"]
+    end
+
+    subgraph Summarize["Summarize Job  ·  runs after all parallel jobs"]
+        DA["Download all artifacts<br/>pattern: compatibility-*"]
+        SM["Aggregate results<br/>summarize_module_statuses.py"]
+        GS["Write GitHub Step Summary<br/>tables: unit · acceptance · metadata"]
     end
 
     T --> V
@@ -75,7 +84,9 @@ flowchart TD
     S1 --> S2 --> CL
     AK -- "no — FOSS fallback" --> FOSS --> CL
 
-    CL --> RP
+    CL --> RP --> RS --> WS --> UA
+    UA -- "fan-in (all jobs complete)" --> DA
+    DA --> SM --> GS
 
     class MJ datasource
     class BR gemswap
@@ -94,6 +105,27 @@ flowchart TD
 | Trigger | Fires on a nightly schedule or manual `workflow_dispatch` (with optional profile and module override). |
 | Validate schema | `validate_modules_config.py` checks `config/modules.json` against the JSON schema before anything fans out. |
 | Build matrix | `build_matrix.rb` expands the module list into two separate matrices: one for unit jobs and one for acceptance jobs (one row per module × target OS). |
+
+### Per-Job Finalisation (end of every parallel job)
+
+After the runner writes its outputs, each matrix job runs three additional steps before uploading its artifact:
+
+| Step | Script | What it produces |
+|------|--------|------------------|
+| Record module status | `classify_module_result.py` | `module-status.json` — a compact status record (id, lane, class, compatibility state, metadata/dependency/documentation fields) written into the job's output directory. |
+| Write per-job summary | `render_module_job_summary.py` | A per-module section appended to `GITHUB_STEP_SUMMARY`, visible on the individual job page in GitHub Actions. |
+| Upload artifact | `actions/upload-artifact` | Uploads the entire output directory as `compatibility-<id>-<lane>` so the summarize job can collect it. |
+
+### CI: Summarize (fan-in)
+
+The `summarize` job runs after **all** unit and acceptance jobs finish (with `if: always()` so it runs even when individual jobs fail). It:
+
+1. Downloads every `compatibility-*` artifact into `all-artifacts/`.
+2. Runs `summarize_module_statuses.py`, which walks the artifact tree collecting every `module-status.json`, sorts results by lane and module id, and writes a consolidated `GITHUB_STEP_SUMMARY` with:
+   - A **Unit Compatibility** table (gating results).
+   - An **Acceptance Compatibility** table (if any acceptance jobs ran).
+   - Counters for clean / warning / failure across both lanes.
+   - A metadata mismatch table for modules whose `metadata.json` does not declare support for the tested Puppet version.
 
 ### Shared Pipeline Stages (both test modes)
 
