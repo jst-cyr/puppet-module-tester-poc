@@ -15,6 +15,7 @@ This file is for coding agents working in this repository.
 - `scripts/validate_modules_config.py`: local schema validation helper.
 - `.github/workflows/compatibility-runner.yml`: CI pipeline and matrix execution.
 - `profiles/puppet_profiles.json`: profile constraints used by the runner.
+- `docs/architecture-flow.md`: end-to-end architecture diagram and stage reference. Must be kept in sync with runner logic, classification rules, and CI workflow changes.
 
 ## Module Addition Workflow (Agent)
 
@@ -120,6 +121,28 @@ When you need a narrow CI run, use workflow input `modules_json` with only new o
 - At runtime, the runner builds a Docker image from the base setfile parameters (image, platform, docker_image_commands) plus Puppet Core install steps, then writes a clean setfile to `workspace/.beaker-setfiles/` that references the locally-built image tag.
 - The rewritten setfile contains no secrets — only the image tag and platform metadata.
 - When adding a new target OS, create the setfile first, then reference it in `modules.json`.
+
+## Architecture Diagram Maintenance
+
+`docs/architecture-flow.md` contains a Mermaid flow diagram and supporting reference tables that describe the end-to-end pipeline. Agents must update this file when making changes to any of the following areas:
+
+| Area changed | What to update in `architecture-flow.md` |
+|---|---|
+| Runner pipeline stages (`lib/module_tester/runner.rb`) | Shared pipeline stage list; diagram node labels and order |
+| Bootstrap logic or Gemfile patching (`lib/module_tester/bootstrap.rb`) | Gem swap branch in diagram; Bootstrap row in stage table; Gemfile conflict override in classification table |
+| Classifier state logic or precedence (`lib/module_tester/classifier.rb`) | Classification precedence list; outcome state table |
+| Downgrade override rules (`lib/module_tester/adapters.rb`) | Downgrade overrides table — add, remove, or update trigger conditions and reclassification outcome |
+| Guardrails checks (`lib/module_tester/guardrails.rb`) | Guardrails row in stage table |
+| Acceptance adapter or Docker isolation model (`lib/module_tester/adapters.rb`, `lib/module_tester/docker.rb`) | Two-Stage Docker Isolation Model section; S1/S2 node labels in diagram; FOSS fallback description |
+| CI workflow (`github/workflows/compatibility-runner.yml`) | CI: Prepare section; diagram CI subgraph |
+| Reporting outputs (`lib/module_tester/reporting.rb`) | Reporting section |
+
+### Rules for diagram edits
+
+- Use `<br/>` for line breaks inside Mermaid node labels — **not** `\n`.
+- Do not remove `classDef` declarations or the `class`/`style` assignments at the bottom of the diagram block; they encode deliberate visual highlights for `modules.json` (datasource), gem swap (gemswap), and Docker isolation (isolation/TwoStage).
+- If a new architectural concept warrants a highlight, add a new `classDef` and apply it consistently.
+- Keep the diagram and the prose tables in sync — if the diagram changes, the corresponding prose section must also change.
 
 ## Editing Expectations for Agents
 
