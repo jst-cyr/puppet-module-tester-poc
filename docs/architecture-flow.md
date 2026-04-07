@@ -1,0 +1,156 @@
+# Architecture Flow
+
+This document describes how the Puppet Module Tester runs unit and acceptance
+tests — from CI trigger through to result classification and reporting.
+
+The runner is designed around a **per-module pipeline** that executes the same
+sequence of stages for every module in the configured matrix, with a branching
+point where unit and acceptance paths diverge.
+
+---
+
+## End-to-End Flow
+
+```mermaid
+flowchart TD
+    subgraph CI["GitHub Actions CI"]
+        T(["Trigger<br/>Schedule · Workflow Dispatch"])
+        V["Validate modules.json<br/>against schema"]
+        BM["Build job matrix<br/>unit entries + acceptance entries"]
+    end
+
+    subgraph Runner["Per-Module Runner  ·  one parallel job per matrix entry"]
+        C["1 · Clone module repo"]
+        D["2 · Discover capabilities<br/>& evaluate metadata.json"]
+        A["3 · Verify gem source auth"]
+        B["4 · Bootstrap dependencies<br/>bundle install"]
+        G["5 · Enforce guardrails<br/>gem source · puppet version"]
+
+        TM{"Test mode?"}
+
+        subgraph UnitPath["Unit Test Path"]
+            UP{"PDK<br/>available?"}
+            PDK["pdk validate<br/>pdk test unit"]
+            Rake["bundle exec rake<br/>validate + spec / test"]
+        end
+
+        subgraph AccPath["Acceptance Test Path"]
+            AK{"Puppet Core<br/>API key set?"}
+
+            subgraph TwoStage["Two-Stage Docker Isolation Model"]
+                S1["Stage 1 · Build SUT Image<br/>docker build — API key present here<br/>Installs Puppet Core agent<br/>Scrubs key from all image layers"]
+                S2["Stage 2 · Run Tests<br/>Clean setfile written — image tag only<br/>Secrets stripped from environment<br/>bundle exec rake beaker"]
+            end
+
+            FOSS["FOSS Fallback<br/>Public puppet-agent — no API key needed<br/>bundle exec rake beaker"]
+        end
+
+        CL["Classify result"]
+        RP["Write reports<br/>JSON · Markdown · Stage logs"]
+    end
+
+    T --> V --> BM
+    BM -- "fan-out (parallel jobs)" --> C
+    C --> D --> A --> B --> G --> TM
+
+    TM -- unit --> UP
+    UP -- yes --> PDK
+    UP -- no --> Rake
+    PDK & Rake --> CL
+
+    TM -- acceptance --> AK
+    AK -- "yes — Puppet Core" --> S1
+    S1 --> S2 --> CL
+    AK -- "no — FOSS fallback" --> FOSS --> CL
+
+    CL --> RP
+```
+
+---
+
+## Stage-by-Stage Notes
+
+### CI: Prepare
+
+| Step | What happens |
+|------|--------------|
+| Trigger | Fires on a nightly schedule or manual `workflow_dispatch` (with optional profile and module override). |
+| Validate schema | `validate_modules_config.py` checks `config/modules.json` against the JSON schema before anything fans out. |
+| Build matrix | `build_matrix.rb` expands the module list into two separate matrices: one for unit jobs and one for acceptance jobs (one row per module × target OS). |
+
+### Shared Pipeline Stages (both test modes)
+
+Each stage wraps a shell command via `StageRunner`. If a stage fails, the
+pipeline **short-circuits** for that module — subsequent stages are skipped and
+the result is classified immediately.
+
+| Stage | Purpose |
+|-------|---------|
+| **Clone** | `git clone --depth 1` at the pinned ref. |
+| **Discover capabilities** | Detects whether the module uses Vox-style rake vars (`uses_vox_vars`) and whether acceptance tests exist (`has_acceptance`). Also reads `metadata.json` to check declared Puppet version constraints. |
+| **Verify auth** | Confirms that the required gem source (public or private Puppet Core) is reachable. An auth failure marks the result `inconclusive` immediately. |
+| **Bootstrap** | `bundle install` into a local vendor path. If a Puppet Core gem version conflict is detected, the runner attempts an automatic Gemfile patch and retries once. |
+| **Guardrails** | Asserts that the installed `puppet` gem matches the expected exact version, and (if configured) that no OpenVox alternative gems were resolved. |
+
+### Unit Test Path
+
+The runner prefers PDK when it is available on the agent **and** the module
+does not use custom Vox rake variables. Otherwise it falls back to Rake.
+
+| Adapter | Commands |
+|---------|----------|
+| PDK | `pdk validate --puppet-version <N>`, then `pdk test unit --puppet-version <N>` |
+| Rake | Inspects `rake -T` output, then runs `rake validate` and `rake spec` (or `rake test`) if those tasks exist. |
+
+### Acceptance Test Path
+
+Acceptance tests run against a real OS inside a Docker container managed by
+[Beaker](https://github.com/voxpupuli/beaker). The target OS is defined by a
+**setfile** — a YAML file under `config/beaker/setfiles/` that declares the
+Docker image and platform string.
+
+#### Two-Stage Docker Isolation Model
+
+When `PUPPET_CORE_API_KEY` is set, the runner uses a deliberate two-stage
+design to ensure that the API key is **never exposed to untrusted module test
+code**:
+
+1. **Stage 1 — Build SUT Image** (`build_sut_image`): The runner invokes
+   `docker build` with the key injected as a BuildKit secret. The Dockerfile
+   installs the Puppet Core agent inside the image and then removes all
+   credential-bearing repo config files in the **same layer**, so the key
+   does not persist in the image history.
+
+2. **Stage 2 — Run Tests** (`acceptance`): The runner writes a _clean_ setfile
+   that references only the pre-built local image tag — no credentials
+   anywhere. Before invoking Beaker, it strips `PUPPET_CORE_API_KEY`,
+   `BUNDLE_RUBYGEMS___PUPPETCORE__PUPPET__COM`, `PASSWORD`, and `USERNAME`
+   from the subprocess environment. Module test code runs with no access to
+   any secret.
+
+#### FOSS Fallback
+
+When no API key is present, the runner sets `BEAKER_PUPPET_COLLECTION` to the
+appropriate `puppet<N>` collection name and Beaker installs the public
+`puppet-agent` package from `yum.puppet.com` (capped at 8.10.0, the last FOSS
+release).
+
+### Result Classification
+
+After all stages complete, the `Classifier` assigns one of these states:
+
+| State | Meaning |
+|-------|---------|
+| `compatible` | All stages passed; metadata declares support for the target Puppet version. |
+| `conditionally_compatible` | Tests passed but metadata, dependency resolution, or documentation checks raised a warning. |
+| `not_compatible` | One or more test stages failed. |
+| `inconclusive` | Auth failure, missing acceptance stage, or empty stage list — result cannot be trusted either way. |
+| `harness_error` | A bootstrap or infrastructure stage failed (clone, bundle, docker build, etc.) |
+
+### Reporting
+
+`Reporting` writes three outputs per run into the configured output directory:
+
+- `compatibility-report.json` — full structured result for every module.
+- `compatibility-summary.md` — human-readable Markdown table.
+- `artifacts/<module-id>/` — per-stage `.log` files copied from the workspace.
