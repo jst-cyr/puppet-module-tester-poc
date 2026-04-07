@@ -13,7 +13,12 @@ point where unit and acceptance paths diverge.
 
 ```mermaid
 flowchart TD
+    classDef datasource fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+    classDef gemswap fill:#fef9c3,stroke:#ca8a04,color:#422006
+    classDef isolation fill:#fce7f3,stroke:#be185d,color:#4a044e
+
     subgraph CI["GitHub Actions CI"]
+        MJ[("modules.json<br/>defines all modules to test")]
         T(["Trigger<br/>Schedule · Workflow Dispatch"])
         V["Validate modules.json<br/>against schema"]
         BM["Build job matrix<br/>unit entries + acceptance entries"]
@@ -23,7 +28,9 @@ flowchart TD
         C["1 · Clone module repo"]
         D["2 · Discover capabilities<br/>& evaluate metadata.json"]
         A["3 · Verify gem source auth"]
-        B["4 · Bootstrap dependencies<br/>bundle install"]
+        B["4 · Bootstrap<br/>bundle install"]
+        GC{"Gem conflict<br/>detected?"}
+        BR["Patch Gemfile<br/>swap to Puppet Core gems<br/>bundle install retry"]
         G["5 · Enforce guardrails<br/>gem source · puppet version"]
 
         TM{"Test mode?"}
@@ -49,9 +56,14 @@ flowchart TD
         RP["Write reports<br/>JSON · Markdown · Stage logs"]
     end
 
-    T --> V --> BM
+    T --> V
+    MJ --> V
+    V --> BM
     BM -- "fan-out (parallel jobs)" --> C
-    C --> D --> A --> B --> G --> TM
+    C --> D --> A --> B --> GC
+    GC -- "no conflict" --> G
+    GC -- "conflict detected" --> BR --> G
+    G --> TM
 
     TM -- unit --> UP
     UP -- yes --> PDK
@@ -64,6 +76,11 @@ flowchart TD
     AK -- "no — FOSS fallback" --> FOSS --> CL
 
     CL --> RP
+
+    class MJ datasource
+    class BR gemswap
+    class S1,S2 isolation
+    style TwoStage fill:#fdf2f8,stroke:#be185d,stroke-width:2px
 ```
 
 ---
