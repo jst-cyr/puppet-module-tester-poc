@@ -21,6 +21,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -100,7 +103,7 @@ jobs:
 
       - name: Upload module artifacts (unit)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compatibility-${{ matrix.module.id }}-unit
           path: o/${{ matrix.module.id }}
@@ -194,7 +197,7 @@ jobs:
 
       - name: Upload module artifacts (acceptance)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}
           path: o/${{ matrix.module.id }}-${{ matrix.module.target_id }}
@@ -202,7 +205,7 @@ jobs:
 
       - name: Upload acceptance fallback diagnostics
         if: ${{ always() && (failure() || cancelled()) }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compatibility-${{ matrix.module.id }}-acceptance-${{ matrix.module.target_id }}-diagnostics
           path: |
@@ -226,7 +229,7 @@ jobs:
           python-version: '3.11'
 
       - name: Download module artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: all-artifacts
           pattern: compatibility-*

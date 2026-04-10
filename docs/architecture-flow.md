@@ -107,6 +107,7 @@ flowchart TD
 | Step | What happens |
 |------|--------------|
 | Trigger | Fires on a nightly schedule or manual `workflow_dispatch` (with optional profile and module override). |
+| JavaScript action runtime | Workflow sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` so JavaScript-based actions run on Node 24 ahead of runner defaults. |
 | Validate schema | `validate_modules_config.py` checks `config/modules.json` against the JSON schema before anything fans out. |
 | Build matrix | `build_matrix.rb` expands the module list into two separate matrices: one for unit jobs and one for acceptance jobs (one row per module × target OS). |
 
@@ -118,13 +119,13 @@ After the runner writes its outputs, each matrix job runs three additional steps
 |------|--------|------------------|
 | Record module status | `classify_module_result.py` | `module-status.json` — a compact status record (id, lane, class, compatibility state, metadata/dependency/documentation fields) written into the job's output directory. |
 | Write per-job summary | `render_module_job_summary.py` | A per-module section appended to `GITHUB_STEP_SUMMARY`, visible on the individual job page in GitHub Actions. |
-| Upload artifact | `actions/upload-artifact` | Uploads the entire output directory as `compatibility-<id>-<lane>` so the summarize job can collect it. |
+| Upload artifact | `actions/upload-artifact@v5` | Uploads the entire output directory as `compatibility-<id>-<lane>` so the summarize job can collect it. |
 
 ### CI: Summarize (fan-in)
 
 The `summarize` job runs after **all** unit and acceptance jobs finish (with `if: always()` so it runs even when individual jobs fail). It:
 
-1. Downloads every `compatibility-*` artifact into `all-artifacts/`.
+1. Downloads every `compatibility-*` artifact into `all-artifacts/` via `actions/download-artifact@v5`.
 2. Runs `summarize_module_statuses.py`, which walks the artifact tree collecting every `module-status.json`, sorts results by lane and module id, and writes a consolidated `GITHUB_STEP_SUMMARY` with:
    - A **Unit Compatibility** table (gating results).
    - An **Acceptance Compatibility** table (if any acceptance jobs ran).
