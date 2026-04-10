@@ -13,7 +13,7 @@ module ModuleTester
     # Builds a Docker image with puppet-agent from authenticated Puppet Core
     # repos.  The API key is used ONLY during the docker build and is removed
     # from the resulting image layers.  Returns [image_tag, StageResult].
-    def build_puppet_core_image(base_setfile_path, puppet_major, api_key)
+    def build_puppet_core_image(base_setfile_path, puppet_major, api_key, docker_mode: 'sshd')
       base = YAML.safe_load(File.read(base_setfile_path), permitted_classes: [Symbol])
       hosts_key = base['HOSTS']&.keys&.first
       raise "No HOSTS entry found in setfile #{base_setfile_path}" unless hosts_key
@@ -25,7 +25,7 @@ module ModuleTester
       existing_cmds = host_cfg['docker_image_commands'] || []
 
       image_tag = "puppet-core-sut:#{File.basename(base_setfile_path, '.*')}"
-      dockerfile = puppet_core_dockerfile(base_image, existing_cmds, variant, version, puppet_major)
+      dockerfile = puppet_core_dockerfile(base_image, existing_cmds, variant, version, puppet_major, docker_mode: docker_mode)
       return [image_tag, Result.failed_stage('build_sut_image', 'Docker CLI not found in PATH')] unless @stage.command_available?('docker')
 
       build_dir = File.expand_path(File.join(@workspace_dir, '.docker-build'))
@@ -56,7 +56,7 @@ module ModuleTester
 
     # Writes a clean setfile YAML that references a pre-built local image.
     # No secrets are embedded in this file.
-    def write_clean_setfile(base_path, image_tag)
+    def write_clean_setfile(base_path, image_tag, docker_mode: 'sshd')
       base = YAML.safe_load(File.read(base_path), permitted_classes: [Symbol])
       hosts_key = base['HOSTS']&.keys&.first
       raise "No HOSTS entry found in setfile #{base_path}" unless hosts_key
@@ -64,9 +64,17 @@ module ModuleTester
       host_cfg = base['HOSTS'][hosts_key]
       host_cfg['image'] = image_tag
       host_cfg['docker_image_commands'] = []  # everything is in the pre-built image
-      # Override beaker-docker's default command (`service sshd start; tail -f /dev/null`),
-      # which fails in non-systemd containers and causes ECONNRESET loops.
-      host_cfg['docker_cmd'] = '/usr/sbin/sshd -D -e'
+
+      if docker_mode == 'systemd'
+        # Systemd mode: container runs /usr/sbin/init as PID 1.
+        # SSH is started by systemd (sshd.service), not as the entrypoint.
+        # Requires privileged container with appropriate mounts.
+        host_cfg['docker_cmd'] = '/usr/sbin/init'
+      else
+        # Override beaker-docker's default command (`service sshd start; tail -f /dev/null`),
+        # which fails in non-systemd containers and causes ECONNRESET loops.
+        host_cfg['docker_cmd'] = '/usr/sbin/sshd -D -e'
+      end
 
       out_dir = File.join(@workspace_dir, '.beaker-setfiles')
       FileUtils.mkdir_p(out_dir)
@@ -91,7 +99,7 @@ module ModuleTester
     # Generates a Dockerfile that installs puppet-agent from Puppet Core repos.
     # Credentials are consumed from a BuildKit secret mount and are never stored
     # in image layers or build metadata.
-    def puppet_core_dockerfile(base_image, setup_commands, variant, version, puppet_major)
+    def puppet_core_dockerfile(base_image, setup_commands, variant, version, puppet_major, docker_mode: 'sshd')
       collection = "puppet#{puppet_major}"
       lines = []
       lines << '# syntax=docker/dockerfile:1.4'
@@ -135,7 +143,7 @@ module ModuleTester
         raise "Unsupported platform variant '#{variant}' for Puppet Core agent install"
       end
 
-      # Ensure Beaker can always connect via SSH without depending on systemd init.
+      # Configure SSH for Beaker connectivity.
       lines << <<~'RUN_SSH'.strip
         RUN mkdir -p /var/run/sshd \
          && ssh-keygen -A \
@@ -145,7 +153,19 @@ module ModuleTester
          && echo 'root:root' | chpasswd
       RUN_SSH
       lines << 'EXPOSE 22'
-      lines << 'CMD ["/bin/sh", "-lc", "mkdir -p /var/run/sshd; ssh-keygen -A >/dev/null 2>&1 || true; exec /usr/sbin/sshd -D -e"]'
+
+      if docker_mode == 'systemd'
+        # Systemd mode: use /usr/sbin/init as PID 1 so systemd manages all
+        # services (including sshd). This requires the container to run
+        # privileged with appropriate cgroup mounts.
+        lines << 'RUN systemctl enable sshd.service'
+        lines << 'CMD ["/usr/sbin/init"]'
+      else
+        # sshd mode: run sshd directly as PID 1 without systemd.
+        # This is the default — faster and more portable, but services
+        # that require systemd (e.g. chronyd) will not function.
+        lines << 'CMD ["/bin/sh", "-lc", "mkdir -p /var/run/sshd; ssh-keygen -A >/dev/null 2>&1 || true; exec /usr/sbin/sshd -D -e"]'
+      end
 
       lines.join("\n") + "\n"
     end

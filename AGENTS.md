@@ -38,6 +38,8 @@ This file is for coding agents working in this repository.
 - Do not guess system package prerequisites.
 - Determine `prereqs` from repository evidence before finalizing a module addition.
 - Add explicit `id` only when stable custom naming is needed in artifacts/reporting.
+- Set `docker_mode` to `systemd` on acceptance targets only when the module's acceptance tests assert service running/enabled state via systemd (e.g. `is_expected.to be_running`, `is_expected.to be_enabled`). Evidence: check `spec/acceptance/` for `be_running` or `be_enabled` matchers on Service resources.
+- Default `docker_mode` is `sshd` — faster, more portable, and avoids privileged containers. Only escalate to `systemd` when tests require it.
 
 ## Mandatory Prereq Discovery
 
@@ -133,7 +135,7 @@ When you need a narrow CI run, use workflow input `modules_json` with only new o
 | Classifier state logic or precedence (`lib/module_tester/classifier.rb`) | Classification precedence list; outcome state table |
 | Downgrade override rules (`lib/module_tester/adapters.rb`) | Downgrade overrides table — add, remove, or update trigger conditions and reclassification outcome |
 | Guardrails checks (`lib/module_tester/guardrails.rb`) | Guardrails row in stage table |
-| Acceptance adapter or Docker isolation model (`lib/module_tester/adapters.rb`, `lib/module_tester/docker.rb`) | Two-Stage Docker Isolation Model section; S1/S2 node labels in diagram; FOSS fallback description |
+| Acceptance adapter or Docker isolation model (`lib/module_tester/adapters.rb`, `lib/module_tester/docker.rb`) | Two-Stage Docker Isolation Model section; Docker Container Modes table; S1/S2S/S2D node labels in diagram; FOSS fallback description |
 | CI workflow (`github/workflows/compatibility-runner.yml`) | CI: Prepare section; diagram CI subgraph |
 | Reporting outputs (`lib/module_tester/reporting.rb`) | Reporting section |
 

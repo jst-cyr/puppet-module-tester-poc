@@ -46,7 +46,9 @@ flowchart TD
 
             subgraph TwoStage["Two-Stage Docker Isolation Model"]
                 S1["Stage 1 · Build SUT Image<br/>docker build — API key present here<br/>Installs Puppet Core agent<br/>Scrubs key from all image layers"]
-                S2["Stage 2 · Run Tests<br/>Clean setfile written — image tag only<br/>Secrets stripped from environment<br/>bundle exec rake beaker"]
+                DM{"docker_mode?"}
+                S2S["Stage 2 · Run Tests (sshd)<br/>sshd as PID 1 — no systemd<br/>Secrets stripped from environment"]
+                S2D["Stage 2 · Run Tests (systemd)<br/>systemd as PID 1 — privileged<br/>Secrets stripped from environment"]
             end
 
             FOSS["FOSS Fallback<br/>Public puppet-agent — no API key needed<br/>bundle exec rake beaker"]
@@ -81,7 +83,9 @@ flowchart TD
 
     TM -- acceptance --> AK
     AK -- "yes — Puppet Core" --> S1
-    S1 --> S2 --> CL
+    S1 --> DM
+    DM -- "sshd (default)" --> S2S --> CL
+    DM -- "systemd" --> S2D --> CL
     AK -- "no — FOSS fallback" --> FOSS --> CL
 
     CL --> RP --> RS --> WS --> UA
@@ -90,7 +94,7 @@ flowchart TD
 
     class MJ datasource
     class BR gemswap
-    class S1,S2 isolation
+    class S1,S2S,S2D isolation
     style TwoStage fill:#fdf2f8,stroke:#be185d,stroke-width:2px
 ```
 
@@ -157,6 +161,21 @@ Acceptance tests run against a real OS inside a Docker container managed by
 [Beaker](https://github.com/voxpupuli/beaker). The target OS is defined by a
 **setfile** — a YAML file under `config/beaker/setfiles/` that declares the
 Docker image and platform string.
+
+#### Docker Container Modes
+
+Each acceptance target can specify a `docker_mode` in `modules.json` that
+controls how the SUT container runs:
+
+| Mode | PID 1 process | Use case | Tradeoffs |
+|------|---------------|----------|-----------|
+| `sshd` (default) | `/usr/sbin/sshd -D -e` | General modules that don't require systemd service management. Fast, portable, stable SSH. | Services managed by systemd (e.g. chronyd, firewalld) cannot start. |
+| `systemd` | `/usr/sbin/init` | Modules whose acceptance tests assert service running/enabled state. Container runs privileged with cgroup mounts. | Heavier, requires privileged container, may be less stable across CI kernels. |
+
+The `sshd` mode was chosen as the default because Beaker's built-in default
+command (`service sshd start; tail -f /dev/null`) caused ECONNRESET loops in
+non-systemd containers, and running sshd directly as PID 1 resolved that
+instability.
 
 #### Two-Stage Docker Isolation Model
 

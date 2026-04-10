@@ -19,7 +19,8 @@ module ModuleTester
       metadata_mode: ENV.fetch('PUPPET_COMPAT_METADATA_MODE', 'warn'),
       allow_acceptance: false,
       test_mode: 'unit',
-      beaker_setfile: nil
+      beaker_setfile: nil,
+      docker_mode: 'sshd'
     }.freeze
 
     def initialize(argv)
@@ -144,6 +145,7 @@ module ModuleTester
         opts.on('--allow-acceptance')   { @options[:allow_acceptance] = true }
         opts.on('--test-mode MODE')     { |v| @options[:test_mode] = v.to_s.strip.downcase }
         opts.on('--beaker-setfile PATH') { |v| @options[:beaker_setfile] = v }
+        opts.on('--docker-mode MODE')   { |v| @options[:docker_mode] = v.to_s.strip.downcase }
       end.parse!(@argv)
 
       unless %w[unit acceptance].include?(@options[:test_mode])

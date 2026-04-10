@@ -61,6 +61,7 @@ module ModuleTester
       return unless tasks.include?('beaker')
 
       puppet_core_api_key = ENV.fetch('PUPPET_CORE_API_KEY', '').strip
+      docker_mode = @options.fetch(:docker_mode, 'sshd')
 
       acceptance_env = env.dup
       acceptance_env['BEAKER_HYPERVISOR'] = 'docker'
@@ -75,14 +76,15 @@ module ModuleTester
         image_tag, build_stage = @docker.build_puppet_core_image(
           @options[:beaker_setfile],
           profile.fetch('puppet_major'),
-          puppet_core_api_key
+          puppet_core_api_key,
+          docker_mode: docker_mode
         )
         result[:stages] << build_stage
         return if build_stage.status != 'passed'
 
         # Stage 2: Write a clean setfile that references the pre-built
         # image — no secrets embedded anywhere.
-        effective_setfile = @docker.write_clean_setfile(@options[:beaker_setfile], image_tag)
+        effective_setfile = @docker.write_clean_setfile(@options[:beaker_setfile], image_tag, docker_mode: docker_mode)
         acceptance_env['BEAKER_SETFILE'] = effective_setfile
         acceptance_env['BEAKER_PUPPET_COLLECTION'] = 'preinstalled'
         effective_collection = 'preinstalled'

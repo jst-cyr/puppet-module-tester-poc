@@ -49,6 +49,10 @@ inputs:
     description: 'JSON-encoded prereqs object'
     required: false
     default: '{}'
+  docker-mode:
+    description: 'Docker container mode: sshd (default) or systemd'
+    required: false
+    default: 'sshd'
 
 runs:
   using: composite
@@ -132,6 +136,9 @@ runs:
         fi
         if [ -n "${{ inputs.beaker-setfile }}" ]; then
           runner_args+=(--beaker-setfile "${{ inputs.beaker-setfile }}")
+        fi
+        if [ "${{ inputs.docker-mode }}" = "systemd" ]; then
+          runner_args+=(--docker-mode systemd)
         fi
         ruby bin/puppet-module-tester "${runner_args[@]}"
 

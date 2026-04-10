@@ -1,0 +1,20 @@
+HOSTS:
+  el9-systemd:
+    platform: el-9-x86_64
+    ip: 127.0.0.1
+    image: rockylinux:9
+    hypervisor: docker
+    docker_cmd: /usr/sbin/init
+    docker_image_commands:
+      - dnf install -y cronie initscripts wget systemd
+    docker_container_create_options:
+      Privileged: true
+      HostConfig:
+        Tmpfs:
+          /run: ''
+          /run/lock: ''
+        Binds:
+          - /sys/fs/cgroup:/sys/fs/cgroup:rw
+CONFIG:
+  log_level: verbose
+  type: foss

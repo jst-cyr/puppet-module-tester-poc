@@ -190,6 +190,7 @@ jobs:
           test-lane: acceptance
           acceptance-target: ${{ matrix.module.target }}
           prereqs-json: ${{ toJson(matrix.module.prereqs) }}
+          docker-mode: ${{ matrix.module.docker_mode || 'sshd' }}
 
       - name: Upload module artifacts (acceptance)
         if: always()

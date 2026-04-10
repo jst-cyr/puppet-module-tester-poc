@@ -60,7 +60,8 @@ modules.each do |m|
       'lane' => 'acceptance',
       'target' => target_name,
       'target_id' => target_id,
-      'setfile' => target.fetch('setfile')
+      'setfile' => target.fetch('setfile'),
+      'docker_mode' => target.fetch('docker_mode', 'sshd')
     }
   end
 end
