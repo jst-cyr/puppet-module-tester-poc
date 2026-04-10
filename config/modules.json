@@ -55,8 +55,50 @@
       }
     },
     {
+      "repo": "https://github.com/voxpupuli/puppet-augeasproviders_sysctl",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "libaugeas-dev",
+          "augeas-tools",
+          "pkg-config",
+          "build-essential"
+        ]
+      },
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
+        ]
+      }
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-augeasproviders_grub",
+      "ref": "master",
+      "prereqs": {
+        "apt": [
+          "libaugeas-dev",
+          "augeas-tools",
+          "pkg-config",
+          "build-essential"
+        ]
+      }
+    },
+    {
       "repo": "https://github.com/voxpupuli/puppet-chrony",
-      "ref": "master"
+      "ref": "master",
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
+        ]
+      }
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-confluence",
@@ -89,6 +131,19 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-extlib",
       "ref": "master"
+    },
+    {
+      "repo": "https://github.com/voxpupuli/puppet-firewalld",
+      "ref": "master",
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
+        ]
+      }
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-gitlab",
@@ -214,6 +269,15 @@
             "pkg-config",
             "build-essential"
         ]
+      },
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
+        ]
       }
     },
     {
@@ -230,6 +294,15 @@
       "prereqs": {
         "apt": [
           "redis-server"
+        ]
+      },
+      "acceptance": {
+        "enabled": true,
+        "targets": [
+          {
+            "name": "el9",
+            "setfile": "el9"
+          }
         ]
       }
     },
