@@ -189,6 +189,14 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-keepalived",
       "ref": "master",
+        "prereqs": {
+          "dnf": [
+            "iproute"
+          ],
+          "yum": [
+            "iproute"
+          ]
+        },
       "acceptance": {
         "enabled": true,
         "targets": [
