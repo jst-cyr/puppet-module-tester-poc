@@ -85,15 +85,6 @@
           "pkg-config",
           "build-essential"
         ]
-      },
-      "acceptance": {
-        "enabled": true,
-        "targets": [
-          {
-            "name": "el9",
-            "setfile": "el9"
-          }
-        ]
       }
     },
     {
