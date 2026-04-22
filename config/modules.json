@@ -263,17 +263,7 @@
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-systemd",
-      "ref": "master",
-      "acceptance": {
-        "enabled": true,
-        "targets": [
-          {
-            "name": "el9-systemd",
-            "setfile": "el9-systemd",
-            "docker_mode": "systemd"
-          }
-        ]
-      }
+      "ref": "master"
     },
     {
       "repo": "https://github.com/voxpupuli/puppet-windows_firewall",
