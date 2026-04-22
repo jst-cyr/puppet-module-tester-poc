@@ -438,15 +438,6 @@
         "apt": [
           "coreutils"
         ]
-      },
-      "acceptance": {
-        "enabled": true,
-        "targets": [
-          {
-            "name": "el9",
-            "setfile": "el9"
-          }
-        ]
       }
     },
     {
