@@ -6,7 +6,7 @@ HOSTS:
     hypervisor: docker
     docker_cmd: /usr/sbin/init
     docker_image_commands:
-      - dnf install -y cronie initscripts wget systemd
+      - dnf install -y cronie initscripts wget systemd iproute
     docker_container_create_options:
       Privileged: true
       HostConfig:

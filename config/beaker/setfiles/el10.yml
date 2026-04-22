@@ -6,7 +6,7 @@ HOSTS:
     hypervisor: docker
     docker_cmd: /usr/sbin/sshd -D -e
     docker_image_commands:
-      - dnf install -y cronie initscripts wget
+      - dnf install -y cronie initscripts wget iproute
 CONFIG:
   log_level: verbose
   type: foss

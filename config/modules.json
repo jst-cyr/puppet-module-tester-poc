@@ -189,14 +189,6 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-keepalived",
       "ref": "master",
-        "prereqs": {
-          "dnf": [
-            "iproute2"
-          ],
-          "yum": [
-            "iproute2"
-          ]
-        },
       "acceptance": {
         "enabled": true,
         "targets": [
@@ -225,14 +217,6 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-nginx",
       "ref": "master",
-      "prereqs": {
-        "dnf": [
-          "iproute2"
-        ],
-        "yum": [
-          "iproute2"
-        ]
-      },
       "acceptance": {
         "enabled": true,
         "targets": [
@@ -383,14 +367,6 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-prometheus",
       "ref": "master",
-      "prereqs": {
-        "dnf": [
-          "iproute2"
-        ],
-        "yum": [
-          "iproute2"
-        ]
-      },
       "acceptance": {
         "enabled": true,
         "targets": [
