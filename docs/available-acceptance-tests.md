@@ -60,7 +60,7 @@ Repos where no `spec/spec_helper_acceptance.rb` or equivalent acceptance entrypo
 | [puppet-kmod](https://github.com/voxpupuli/puppet-kmod) |
 | [puppet-prometheus_reporter](https://github.com/voxpupuli/puppet-prometheus_reporter) |
 
-## Modules With Acceptance Tests but Disabled in CI (2)
+## Modules With Acceptance Tests but Disabled in CI
 
 These modules have acceptance tests defined but are currently excluded from the test matrix due to Docker container limitations.
 
