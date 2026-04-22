@@ -225,6 +225,14 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-nginx",
       "ref": "master",
+      "prereqs": {
+        "dnf": [
+          "iproute"
+        ],
+        "yum": [
+          "iproute"
+        ]
+      },
       "acceptance": {
         "enabled": true,
         "targets": [
