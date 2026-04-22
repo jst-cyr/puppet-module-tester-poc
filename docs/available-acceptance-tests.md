@@ -3,7 +3,7 @@
 Audit of all module repositories defined in `config/modules.json`.
 Identifies which repos have acceptance tests and the operating systems declared in their `metadata.json`.
 
-Last updated: 2026-04-10
+Last updated: 2026-04-22
 
 ## Modules With Acceptance Tests (36)
 
@@ -59,3 +59,12 @@ Repos where no `spec/spec_helper_acceptance.rb` or equivalent acceptance entrypo
 | [puppet-hdm](https://github.com/voxpupuli/puppet-hdm) |
 | [puppet-kmod](https://github.com/voxpupuli/puppet-kmod) |
 | [puppet-prometheus_reporter](https://github.com/voxpupuli/puppet-prometheus_reporter) |
+
+## Modules With Acceptance Tests but Disabled in CI (2)
+
+These modules have acceptance tests defined but are currently excluded from the test matrix due to Docker container limitations.
+
+| Module | Reason |
+|--------|--------|
+| [puppet-augeasproviders_grub](https://github.com/voxpupuli/puppet-augeasproviders_grub) | GRUB providers are confined to specific hardware/boot scenarios; acceptance tests require reboot semantics and filesystem access incompatible with containerized environments. Module scope fundamentally conflicts with Docker/container-based testing. |
+| [puppet-systemd](https://github.com/voxpupuli/puppet-systemd) | Module attempts to manage `/etc/resolv.conf` via symlink replacement to `/run/systemd/resolve/resolv.conf`. Docker container runtime owns `/etc/resolv.conf`, preventing overlay filesystem manipulation and causing "Device or resource busy" errors. Requires non-Docker execution or upstream test changes. |
