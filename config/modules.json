@@ -191,10 +191,10 @@
       "ref": "master",
         "prereqs": {
           "dnf": [
-            "iproute"
+            "iproute2"
           ],
           "yum": [
-            "iproute"
+            "iproute2"
           ]
         },
       "acceptance": {
@@ -227,10 +227,10 @@
       "ref": "master",
       "prereqs": {
         "dnf": [
-          "iproute"
+          "iproute2"
         ],
         "yum": [
-          "iproute"
+          "iproute2"
         ]
       },
       "acceptance": {
@@ -385,10 +385,10 @@
       "ref": "master",
       "prereqs": {
         "dnf": [
-          "iproute"
+          "iproute2"
         ],
         "yum": [
-          "iproute"
+          "iproute2"
         ]
       },
       "acceptance": {
