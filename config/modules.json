@@ -383,6 +383,14 @@
     {
       "repo": "https://github.com/voxpupuli/puppet-prometheus",
       "ref": "master",
+      "prereqs": {
+        "dnf": [
+          "iproute"
+        ],
+        "yum": [
+          "iproute"
+        ]
+      },
       "acceptance": {
         "enabled": true,
         "targets": [
