@@ -156,11 +156,18 @@ does not use custom Vox rake variables. Otherwise it falls back to Rake.
 | PDK | `pdk validate --puppet-version <N>`, then `pdk test unit --puppet-version <N>` |
 | Rake | Inspects `rake -T` output, then runs `rake validate` and `rake spec` (or `rake test`) if those tasks exist. |
 
-For rake-based unit runs, the adapter enables probe instrumentation for the process tree and runs rake through the probe wrapper (`bundle exec ruby -r.../fact_runtime_probe.rb -S rake <task>`), while also exporting `RUBYOPT=-r.../fact_runtime_probe.rb` so child Ruby processes are instrumented. Each process writes probe data to a per-process file, and the adapter aggregates all probe files into a single `fact_runtime_probe` stage summary (including `probe_capture`, total call counts, providers seen, and a fact source hint).
+For rake-based unit runs the adapter inserts a deterministic `fact_provider` stage between `validate` and `unit`. This stage runs a single isolated `bundle exec ruby -e "require 'facter'; ..."` inside the module's resolved bundle and parses `Gemfile.lock`, then records:
 
-If runtime fact lookups are observed through **OpenFact**, the runner records `dependency_status = warning` with an explicit compatibility message. This indicates the unit run was not a definitive Perforce Puppet Core + Perforce Facter compatibility signal.
+- `fact_provider` — `facter`, `openfact`, or `unknown` (which gem actually wins `require 'facter'`)
+- `fact_provider_gem` — gem name and version (e.g. `facter@4.17.0`)
+- `puppet_provider` — `puppet@<v>`, `openvox@<v>`, or both if dual-resolved
+- `gemfile_facter` / `gemfile_openfact` — versions present in `Gemfile.lock` (or `absent`)
+- `detection_method` — `bundle_resolution`, `gemfile_lock_inference`, or `unknown`
+- `facter_runtime_version` — the `Facter::VERSION` constant value reported by the loaded gem
 
-If no runtime fact API calls are observed, no warning is added — this typically means facts were injected statically (for example via precomputed hashes / facterdb) rather than resolved through a live fact provider.
+This approach does not depend on tests actually exercising the Facter API, does not depend on `RUBYOPT`/env-var inheritance across `system()`-spawned rspec children, and is not defeated by `rspec-puppet`'s `facter_implementation = 'rspec'` stub layer.
+
+If `fact_provider` resolves to **OpenFact** — or only the OpenFact gem is present in `Gemfile.lock` — the runner records `dependency_status = warning` with an explicit compatibility message. This indicates the unit run was not a definitive Perforce Puppet Core + Perforce Facter compatibility signal.
 
 ### Acceptance Test Path
 
@@ -236,7 +243,7 @@ The classifier evaluates conditions in this order, stopping at the first match:
 8. No stages ran → **`inconclusive`**
 9. Otherwise → **`compatible`**
 
-Dependency warnings can come from either Gemfile conflict recovery or runtime OpenFact detection in unit tests.
+Dependency warnings can come from either Gemfile conflict recovery or OpenFact detection by the `fact_provider` stage.
 
 For **acceptance mode** the logic is simpler: if the `acceptance` stage is absent the result is `inconclusive`; otherwise the stage exit code maps directly to `compatible` or `not_compatible`.
 

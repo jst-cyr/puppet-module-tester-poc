@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require 'json'
-require 'fileutils'
-
 module ModuleTester
   class Adapters
     def initialize(stage_runner, docker, options)
@@ -32,12 +29,12 @@ module ModuleTester
         unit_stage = @stage.run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << unit_stage
         result[:stages] << StageResult.new(
-          name: 'fact_runtime_probe',
+          name: 'fact_provider',
           status: 'passed',
           command: nil,
           exit_code: 0,
           duration_seconds: 0,
-          output: 'Fact runtime probe is not applied to the PDK adapter path.'
+          output: 'fact_provider=unknown detection_method=skipped reason=pdk_adapter_path'
         )
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
         return
@@ -52,150 +49,21 @@ module ModuleTester
         downgrade_stale_reference_validate_failure(result, validate_stage)
       end
 
+      # Detect fact provider once per module before any unit tests run.
+      # This is deterministic: it inspects what `require 'facter'` resolves
+      # to in the module's bundle plus parses Gemfile.lock. It does not
+      # depend on tests actually calling the Facter API.
+      result[:stages] << FactProviderDetector.detect(@stage, module_dir, env, result)
+
       if tasks.include?('spec')
-        unit_env = build_fact_probe_env(module_dir, env)
-        unit_stage = @stage.run_stage('unit', probe_wrapped_rake_command('spec'), module_dir, unit_env)
+        unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, env)
         result[:stages] << unit_stage
-        annotate_fact_runtime_provider(module_dir, result)
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
       elsif tasks.include?('test')
-        unit_env = build_fact_probe_env(module_dir, env)
-        unit_stage = @stage.run_stage('unit', probe_wrapped_rake_command('test'), module_dir, unit_env)
+        unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'test'], module_dir, env)
         result[:stages] << unit_stage
-        annotate_fact_runtime_provider(module_dir, result)
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
       end
-    end
-
-    def build_fact_probe_env(module_dir, env)
-      probe_dir = File.join(module_dir, '.fact-runtime-probe')
-
-      FileUtils.rm_rf(probe_dir)
-      FileUtils.mkdir_p(probe_dir)
-
-      probe_env = env.dup
-      probe_env['PUPPET_FACT_RUNTIME_PROBE_ENABLED'] = 'true'
-      probe_env['PUPPET_FACT_RUNTIME_PROBE_OUTPUT_DIR'] = probe_dir
-
-      probe_path = File.expand_path('fact_runtime_probe.rb', __dir__)
-      existing_rubyopt = probe_env['RUBYOPT'].to_s.strip
-      probe_env['RUBYOPT'] = [existing_rubyopt, "-r#{probe_path}"].reject(&:empty?).join(' ')
-      probe_env
-    end
-
-    def probe_wrapped_rake_command(task_name)
-      probe_path = File.expand_path('fact_runtime_probe.rb', __dir__)
-      ['bundle', 'exec', 'ruby', "-r#{probe_path}", '-S', 'rake', task_name]
-    end
-
-    def annotate_fact_runtime_provider(module_dir, result)
-      probe_dir = File.join(module_dir, '.fact-runtime-probe')
-      probe_files = Dir.glob(File.join(probe_dir, 'probe-*.kv')).sort
-
-      if probe_files.empty?
-        result[:stages] << StageResult.new(
-          name: 'fact_runtime_probe',
-          status: 'passed',
-          command: nil,
-          exit_code: 0,
-          duration_seconds: 0,
-          output: 'probe_capture=failed probe_files=0 hooks_installed_any=false runtime_fact_api_used_any=false call_count_total=0 providers_seen= facts_source_hint=unknown'
-        )
-        return
-      end
-
-      payloads = probe_files.map { |path| parse_probe_payload(File.read(path)) }
-      used_runtime_fact_api = payloads.any? { |payload| payload['runtime_fact_api_used'] == true }
-      providers_seen = payloads.flat_map { |payload| Array(payload['providers_seen']) }.map(&:to_s).uniq.sort
-      call_count = payloads.sum { |payload| payload['call_count'].to_i }
-      hooks_installed = payloads.any? { |payload| payload['hooks_installed'] == true }
-
-      unit_output = result[:stages].find { |stage| stage.name == 'unit' }&.output.to_s
-      facterdb_signal = unit_output.match?(/FacterDB/i)
-
-      source_hint = if used_runtime_fact_api
-                      'runtime_fact_api'
-                    elsif facterdb_signal
-                      'facterdb_or_mocked_facts'
-                    else
-                      'no_runtime_fact_api_observed'
-                    end
-
-      summary = [
-        'probe_capture=ok',
-        "probe_files=#{probe_files.length}",
-        "hooks_installed_any=#{hooks_installed}",
-        "runtime_fact_api_used_any=#{used_runtime_fact_api}",
-        "call_count_total=#{call_count}",
-        "providers_seen=#{providers_seen.join(',')}",
-        "facts_source_hint=#{source_hint}"
-      ].join(' ')
-
-      result[:stages] << StageResult.new(
-        name: 'fact_runtime_probe',
-        status: 'passed',
-        command: nil,
-        exit_code: 0,
-        duration_seconds: 0,
-        output: summary
-      )
-
-      return unless used_runtime_fact_api
-      return unless providers_seen.include?('openfact')
-
-      warning = 'Compatibility signal: unit tests resolved runtime facts through OpenFact. This run is not a definitive Perforce Puppet Core + Perforce Facter compatibility test.'
-
-      result[:dependency_status] = 'warning'
-      existing_message = result[:dependency_message].to_s.strip
-      result[:dependency_message] = if existing_message.empty? || existing_message.include?(warning)
-                                     warning
-                                   else
-                                     "#{existing_message}\n#{warning}"
-                                   end
-      Annotations.github_annotation('warning', "#{result[:module]} runtime fact provider", warning)
-      result[:stages] << StageResult.new(
-        name: 'openfact_runtime_warning',
-        status: 'passed',
-        command: nil,
-        exit_code: 0,
-        duration_seconds: 0,
-        output: warning
-      )
-    rescue StandardError => e
-      result[:stages] << StageResult.new(
-        name: 'fact_runtime_probe',
-        status: 'passed',
-        command: nil,
-        exit_code: 0,
-        duration_seconds: 0,
-        output: "Fact runtime probe diagnostics unavailable: #{e.message}"
-      )
-    end
-
-    def parse_probe_payload(raw)
-      text = raw.to_s
-      stripped = text.lstrip
-      if stripped.start_with?('{')
-        parsed = JSON.parse(text)
-        parsed['providers_seen'] = Array(parsed['providers_seen'])
-        return parsed
-      end
-
-      data = {}
-      text.each_line do |line|
-        key, value = line.strip.split('=', 2)
-        next if key.to_s.empty?
-
-        data[key] = value.to_s
-      end
-
-      {
-        'runtime_fact_api_used' => data['runtime_fact_api_used'] == 'true',
-        'call_count' => Integer(data.fetch('call_count', '0'), exception: false) || 0,
-        'providers_seen' => data.fetch('providers_seen', '').split(',').map(&:strip).reject(&:empty?),
-        'hooks_installed' => data['hooks_installed'] == 'true',
-        'errors_count' => Integer(data.fetch('errors_count', '0'), exception: false) || 0
-      }
     end
 
     def run_acceptance(module_dir, env, result, profile)
