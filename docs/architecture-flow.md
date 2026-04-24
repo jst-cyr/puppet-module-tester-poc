@@ -156,6 +156,12 @@ does not use custom Vox rake variables. Otherwise it falls back to Rake.
 | PDK | `pdk validate --puppet-version <N>`, then `pdk test unit --puppet-version <N>` |
 | Rake | Inspects `rake -T` output, then runs `rake validate` and `rake spec` (or `rake test`) if those tasks exist. |
 
+The unit adapter injects a runtime fact-provider probe (`RUBYOPT -r.../fact_runtime_probe.rb`) into the test process. The probe records whether runtime fact APIs are called (`Facter.value` / `Facter.fact`) and which provider implementation serves those calls.
+
+If runtime fact lookups are observed through **OpenFact**, the runner records `dependency_status = warning` with an explicit compatibility message. This indicates the unit run was not a definitive Perforce Puppet Core + Perforce Facter compatibility signal.
+
+If no runtime fact API calls are observed, no warning is added — this typically means facts were injected statically (for example via precomputed hashes / facterdb) rather than resolved through a live fact provider.
+
 ### Acceptance Test Path
 
 Acceptance tests run against a real OS inside a Docker container managed by
@@ -229,6 +235,8 @@ The classifier evaluates conditions in this order, stopping at the first match:
 7. Documentation status is `warning` → **`conditionally_compatible`**
 8. No stages ran → **`inconclusive`**
 9. Otherwise → **`compatible`**
+
+Dependency warnings can come from either Gemfile conflict recovery or runtime OpenFact detection in unit tests.
 
 For **acceptance mode** the logic is simpler: if the `acceptance` stage is absent the result is `inconclusive`; otherwise the stage exit code maps directly to `compatible` or `not_compatible`.
 
