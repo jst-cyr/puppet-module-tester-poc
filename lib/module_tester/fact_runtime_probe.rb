@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'json'
-
 module ModuleTester
   module FactRuntimeProbe
     module_function
@@ -121,7 +119,13 @@ module ModuleTester
         errors: state[:errors]
       }
 
-      File.write(output_path, JSON.generate(payload))
+      lines = []
+      lines << "runtime_fact_api_used=#{payload[:runtime_fact_api_used]}"
+      lines << "call_count=#{payload[:call_count]}"
+      lines << "providers_seen=#{Array(payload[:providers_seen]).join(',')}"
+      lines << "hooks_installed=#{payload[:hooks_installed]}"
+      lines << "errors_count=#{Array(payload[:errors]).length}"
+      File.write(output_path, lines.join("\n") + "\n")
     rescue StandardError
       # Best-effort reporting only; never fail test runs because diagnostics failed.
       nil

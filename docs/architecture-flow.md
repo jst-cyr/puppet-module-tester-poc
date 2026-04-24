@@ -156,7 +156,7 @@ does not use custom Vox rake variables. Otherwise it falls back to Rake.
 | PDK | `pdk validate --puppet-version <N>`, then `pdk test unit --puppet-version <N>` |
 | Rake | Inspects `rake -T` output, then runs `rake validate` and `rake spec` (or `rake test`) if those tasks exist. |
 
-The unit adapter injects a runtime fact-provider probe (`RUBYOPT -r.../fact_runtime_probe.rb`) into the test process. The probe records whether runtime fact APIs are called (`Facter.value` / `Facter.fact`) and which provider implementation serves those calls.
+For rake-based unit runs, the adapter wraps the unit command as `bundle exec ruby -r.../fact_runtime_probe.rb -S rake <task>`. The probe records whether runtime fact APIs are called (`Facter.value` / `Facter.fact`) and which provider implementation serves those calls.
 
 If runtime fact lookups are observed through **OpenFact**, the runner records `dependency_status = warning` with an explicit compatibility message. This indicates the unit run was not a definitive Perforce Puppet Core + Perforce Facter compatibility signal.
 

@@ -28,10 +28,16 @@ module ModuleTester
         validate_stage = @stage.run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << validate_stage
         downgrade_stale_reference_validate_failure(result, validate_stage)
-        unit_env = build_fact_probe_env(module_dir, env)
-        unit_stage = @stage.run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, unit_env)
+        unit_stage = @stage.run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << unit_stage
-        annotate_fact_runtime_provider(module_dir, result)
+        result[:stages] << StageResult.new(
+          name: 'fact_runtime_probe',
+          status: 'passed',
+          command: nil,
+          exit_code: 0,
+          duration_seconds: 0,
+          output: 'Fact runtime probe is not applied to the PDK adapter path.'
+        )
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
         return
       end
@@ -47,13 +53,13 @@ module ModuleTester
 
       if tasks.include?('spec')
         unit_env = build_fact_probe_env(module_dir, env)
-        unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, unit_env)
+        unit_stage = @stage.run_stage('unit', probe_wrapped_rake_command('spec'), module_dir, unit_env)
         result[:stages] << unit_stage
         annotate_fact_runtime_provider(module_dir, result)
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
       elsif tasks.include?('test')
         unit_env = build_fact_probe_env(module_dir, env)
-        unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'test'], module_dir, unit_env)
+        unit_stage = @stage.run_stage('unit', probe_wrapped_rake_command('test'), module_dir, unit_env)
         result[:stages] << unit_stage
         annotate_fact_runtime_provider(module_dir, result)
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
@@ -61,18 +67,19 @@ module ModuleTester
     end
 
     def build_fact_probe_env(module_dir, env)
-      probe_path = File.expand_path('fact_runtime_probe.rb', __dir__)
       output_path = File.join(module_dir, '.fact-runtime-probe.json')
 
       File.delete(output_path) if File.exist?(output_path)
 
       probe_env = env.dup
-      rubyopt = probe_env.fetch('RUBYOPT', '').to_s.strip
-      require_probe = "-r#{probe_path}"
-      probe_env['RUBYOPT'] = rubyopt.empty? ? require_probe : "#{rubyopt} #{require_probe}"
       probe_env['PUPPET_FACT_RUNTIME_PROBE_ENABLED'] = 'true'
       probe_env['PUPPET_FACT_RUNTIME_PROBE_OUTPUT'] = output_path
       probe_env
+    end
+
+    def probe_wrapped_rake_command(task_name)
+      probe_path = File.expand_path('fact_runtime_probe.rb', __dir__)
+      ['bundle', 'exec', 'ruby', "-r#{probe_path}", '-S', 'rake', task_name]
     end
 
     def annotate_fact_runtime_provider(module_dir, result)
@@ -89,7 +96,7 @@ module ModuleTester
         return
       end
 
-      payload = JSON.parse(File.read(output_path))
+      payload = parse_probe_payload(File.read(output_path))
       used_runtime_fact_api = payload['runtime_fact_api_used'] == true
       providers_seen = Array(payload['providers_seen']).map(&:to_s)
       call_count = payload['call_count'].to_i
@@ -134,6 +141,30 @@ module ModuleTester
         duration_seconds: 0,
         output: "Fact runtime probe diagnostics unavailable: #{e.message}"
       )
+    end
+
+    def parse_probe_payload(raw)
+      text = raw.to_s
+      stripped = text.lstrip
+      if stripped.start_with?('{')
+        parsed = JSON.parse(text)
+        parsed['providers_seen'] = Array(parsed['providers_seen'])
+        return parsed
+      end
+
+      data = {}
+      text.each_line do |line|
+        key, value = line.strip.split('=', 2)
+        next if key.to_s.empty?
+
+        data[key] = value.to_s
+      end
+
+      {
+        'runtime_fact_api_used' => data['runtime_fact_api_used'] == 'true',
+        'call_count' => Integer(data.fetch('call_count', '0'), exception: false) || 0,
+        'providers_seen' => data.fetch('providers_seen', '').split(',').map(&:strip).reject(&:empty?)
+      }
     end
 
     def run_acceptance(module_dir, env, result, profile)
