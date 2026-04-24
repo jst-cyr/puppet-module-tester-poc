@@ -22,13 +22,13 @@ module ModuleTester
     private
 
     def run_unit(module_dir, env, profile, result)
-      unit_env = build_fact_probe_env(module_dir, env)
       prefer_rake = result[:capability].is_a?(Hash) && result[:capability]['uses_vox_vars']
 
       if @stage.command_available?('pdk') && !prefer_rake
-        validate_stage = @stage.run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, unit_env)
+        validate_stage = @stage.run_stage('validate', ['pdk', 'validate', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, env)
         result[:stages] << validate_stage
         downgrade_stale_reference_validate_failure(result, validate_stage)
+        unit_env = build_fact_probe_env(module_dir, env)
         unit_stage = @stage.run_stage('unit', ['pdk', 'test', 'unit', '--puppet-version', profile.fetch('puppet_major').to_s], module_dir, unit_env)
         result[:stages] << unit_stage
         annotate_fact_runtime_provider(module_dir, result)
@@ -38,19 +38,21 @@ module ModuleTester
 
       return unless File.exist?(File.join(module_dir, 'Rakefile')) && @stage.command_available?('bundle')
 
-      tasks = @stage.rake_tasks(module_dir, unit_env)
+      tasks = @stage.rake_tasks(module_dir, env)
       if tasks.include?('validate')
-        validate_stage = @stage.run_stage('validate', ['bundle', 'exec', 'rake', 'validate'], module_dir, unit_env)
+        validate_stage = @stage.run_stage('validate', ['bundle', 'exec', 'rake', 'validate'], module_dir, env)
         result[:stages] << validate_stage
         downgrade_stale_reference_validate_failure(result, validate_stage)
       end
 
       if tasks.include?('spec')
+        unit_env = build_fact_probe_env(module_dir, env)
         unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, unit_env)
         result[:stages] << unit_stage
         annotate_fact_runtime_provider(module_dir, result)
         downgrade_puppet_server_default_unit_failure(result, unit_stage)
       elsif tasks.include?('test')
+        unit_env = build_fact_probe_env(module_dir, env)
         unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'test'], module_dir, unit_env)
         result[:stages] << unit_stage
         annotate_fact_runtime_provider(module_dir, result)

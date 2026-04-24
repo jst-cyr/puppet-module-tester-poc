@@ -126,24 +126,31 @@ module ModuleTester
       # Best-effort reporting only; never fail test runs because diagnostics failed.
       nil
     end
+
+    def start_facter_watch
+      return unless enabled?
+      return if state[:hooks_installed]
+      return if state[:watch_started]
+
+      state[:watch_started] = true
+      watcher = TracePoint.new(:end) do |_tp|
+        next unless Object.const_defined?(:Facter)
+
+        install_hooks_if_possible
+        watcher.disable if state[:hooks_installed]
+      rescue StandardError => e
+        state[:errors] << "watch_failed: #{e.class}: #{e.message}"
+        watcher.disable
+      end
+      watcher.enable
+    rescue StandardError => e
+      state[:errors] << "watch_start_failed: #{e.class}: #{e.message}"
+    end
   end
 end
 
 if ENV.fetch('PUPPET_FACT_RUNTIME_PROBE_ENABLED', '').downcase == 'true'
-  module Kernel
-    unless method_defined?(:__pmt_probe_original_require)
-      alias __pmt_probe_original_require require
-
-      def require(path)
-        result = __pmt_probe_original_require(path)
-        if path.to_s.include?('facter') || path.to_s.include?('openfact')
-          ModuleTester::FactRuntimeProbe.install_hooks_if_possible
-        end
-        result
-      end
-    end
-  end
-
   ModuleTester::FactRuntimeProbe.install_hooks_if_possible
+  ModuleTester::FactRuntimeProbe.start_facter_watch
   at_exit { ModuleTester::FactRuntimeProbe.write_report }
 end
