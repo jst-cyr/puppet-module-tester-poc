@@ -39,7 +39,7 @@ flowchart TD
             UP{"PDK<br/>available?"}
             PDK["pdk validate<br/>pdk test unit"]
             FE["Facter load-path enforcement<br/>RUBYOPT -I prepend<br/>(private source only)"]
-            FP["fact_provider detection<br/>bundle why · require probe"]
+            FP["fact_provider detection<br/>require probe"]
             Rake["bundle exec rake<br/>validate + spec / test"]
         end
 
@@ -167,7 +167,6 @@ For rake-based unit runs the adapter inserts a deterministic `fact_provider` sta
 - `detection_method` — `bundle_resolution`, `gemfile_lock_inference`, or `unknown`
 - `facter_runtime_version` — the `Facter::VERSION` constant value reported by the loaded gem
 - `enforcement` — `skipped`, `attempted`, `succeeded`, or `failed` (see Facter Load-Path Enforcement below)
-- `pulled_by_openfact` / `pulled_by_openvox` — output of `bundle why openfact` / `bundle why openvox` when those gems are present in the lockfile (dependency chain provenance)
 
 This approach does not depend on tests actually exercising the Facter API, does not depend on `RUBYOPT`/env-var inheritance across `system()`-spawned rspec children, and is not defeated by `rspec-puppet`'s `facter_implementation = 'rspec'` stub layer.
 
