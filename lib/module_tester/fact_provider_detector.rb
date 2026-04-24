@@ -38,12 +38,13 @@ module ModuleTester
     # Build the StageResult for the fact_provider stage and return it. Also
     # mutates the result hash to add an OpenFact warning when applicable.
     def detect(stage_runner, module_dir, env, result)
-      lock_info = parse_gemfile_lock(File.join(module_dir, 'Gemfile.lock'))
+      lockfile_path = resolve_lockfile_path(module_dir, env)
+      lock_info = parse_gemfile_lock(lockfile_path)
       probe_info = run_resolution_probe(stage_runner, module_dir, env)
 
       provider, provider_gem = classify_provider(probe_info, lock_info)
 
-      summary = build_summary(provider, provider_gem, probe_info, lock_info)
+      summary = build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path)
 
       stage = StageResult.new(
         name: 'fact_provider',
@@ -57,6 +58,25 @@ module ModuleTester
       maybe_emit_openfact_warning(provider, lock_info, result)
 
       stage
+    end
+
+    def resolve_lockfile_path(module_dir, env)
+      candidates = []
+
+      bundle_gemfile = env.fetch('BUNDLE_GEMFILE', '').to_s.strip
+      unless bundle_gemfile.empty?
+        gemfile_path = if File.absolute_path(bundle_gemfile) == bundle_gemfile
+                         bundle_gemfile
+                       else
+                         File.expand_path(bundle_gemfile, module_dir)
+                       end
+        candidates << "#{gemfile_path}.lock"
+      end
+
+      candidates << File.join(module_dir, 'Gemfile.lock')
+      candidates << File.join(module_dir, 'Gemfile.puppetcore.lock')
+
+      candidates.find { |path| File.exist?(path) } || candidates.first
     end
 
     def parse_gemfile_lock(path)
@@ -146,7 +166,7 @@ module ModuleTester
       m ? m[1] : ''
     end
 
-    def build_summary(provider, provider_gem, probe_info, lock_info)
+    def build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path)
       puppet_provider = if lock_info[:puppet] && lock_info[:openvox]
                           "puppet@#{lock_info[:puppet]}+openvox@#{lock_info[:openvox]}"
                         elsif lock_info[:puppet]
@@ -171,6 +191,7 @@ module ModuleTester
         "puppet_provider=#{puppet_provider}",
         "gemfile_facter=#{lock_info[:facter] || 'absent'}",
         "gemfile_openfact=#{lock_info[:openfact] || 'absent'}",
+        "gemfile_lock=#{File.basename(lockfile_path)}",
         "detection_method=#{detection_method}",
         "facter_runtime_version=#{probe_info[:version].to_s.empty? ? 'unknown' : probe_info[:version]}"
       ]
