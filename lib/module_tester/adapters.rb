@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'fileutils'
 
 module ModuleTester
   class Adapters
@@ -67,13 +68,18 @@ module ModuleTester
     end
 
     def build_fact_probe_env(module_dir, env)
-      output_path = File.join(module_dir, '.fact-runtime-probe.json')
+      probe_dir = File.join(module_dir, '.fact-runtime-probe')
 
-      File.delete(output_path) if File.exist?(output_path)
+      FileUtils.rm_rf(probe_dir)
+      FileUtils.mkdir_p(probe_dir)
 
       probe_env = env.dup
       probe_env['PUPPET_FACT_RUNTIME_PROBE_ENABLED'] = 'true'
-      probe_env['PUPPET_FACT_RUNTIME_PROBE_OUTPUT'] = output_path
+      probe_env['PUPPET_FACT_RUNTIME_PROBE_OUTPUT_DIR'] = probe_dir
+
+      probe_path = File.expand_path('fact_runtime_probe.rb', __dir__)
+      existing_rubyopt = probe_env['RUBYOPT'].to_s.strip
+      probe_env['RUBYOPT'] = [existing_rubyopt, "-r#{probe_path}"].reject(&:empty?).join(' ')
       probe_env
     end
 
@@ -83,25 +89,48 @@ module ModuleTester
     end
 
     def annotate_fact_runtime_provider(module_dir, result)
-      output_path = File.join(module_dir, '.fact-runtime-probe.json')
-      unless File.exist?(output_path)
+      probe_dir = File.join(module_dir, '.fact-runtime-probe')
+      probe_files = Dir.glob(File.join(probe_dir, 'probe-*.kv')).sort
+
+      if probe_files.empty?
         result[:stages] << StageResult.new(
           name: 'fact_runtime_probe',
           status: 'passed',
           command: nil,
           exit_code: 0,
           duration_seconds: 0,
-          output: 'Fact runtime probe data not found; no runtime fact-provider signal captured.'
+          output: 'probe_capture=failed probe_files=0 hooks_installed_any=false runtime_fact_api_used_any=false call_count_total=0 providers_seen= facts_source_hint=unknown'
         )
         return
       end
 
-      payload = parse_probe_payload(File.read(output_path))
-      used_runtime_fact_api = payload['runtime_fact_api_used'] == true
-      providers_seen = Array(payload['providers_seen']).map(&:to_s)
-      call_count = payload['call_count'].to_i
+      payloads = probe_files.map { |path| parse_probe_payload(File.read(path)) }
+      used_runtime_fact_api = payloads.any? { |payload| payload['runtime_fact_api_used'] == true }
+      providers_seen = payloads.flat_map { |payload| Array(payload['providers_seen']) }.map(&:to_s).uniq.sort
+      call_count = payloads.sum { |payload| payload['call_count'].to_i }
+      hooks_installed = payloads.any? { |payload| payload['hooks_installed'] == true }
 
-      summary = "runtime_fact_api_used=#{used_runtime_fact_api} call_count=#{call_count} providers_seen=#{providers_seen.join(',')}"
+      unit_output = result[:stages].find { |stage| stage.name == 'unit' }&.output.to_s
+      facterdb_signal = unit_output.match?(/FacterDB/i)
+
+      source_hint = if used_runtime_fact_api
+                      'runtime_fact_api'
+                    elsif facterdb_signal
+                      'facterdb_or_mocked_facts'
+                    else
+                      'no_runtime_fact_api_observed'
+                    end
+
+      summary = [
+        'probe_capture=ok',
+        "probe_files=#{probe_files.length}",
+        "hooks_installed_any=#{hooks_installed}",
+        "runtime_fact_api_used_any=#{used_runtime_fact_api}",
+        "call_count_total=#{call_count}",
+        "providers_seen=#{providers_seen.join(',')}",
+        "facts_source_hint=#{source_hint}"
+      ].join(' ')
+
       result[:stages] << StageResult.new(
         name: 'fact_runtime_probe',
         status: 'passed',
@@ -163,7 +192,9 @@ module ModuleTester
       {
         'runtime_fact_api_used' => data['runtime_fact_api_used'] == 'true',
         'call_count' => Integer(data.fetch('call_count', '0'), exception: false) || 0,
-        'providers_seen' => data.fetch('providers_seen', '').split(',').map(&:strip).reject(&:empty?)
+        'providers_seen' => data.fetch('providers_seen', '').split(',').map(&:strip).reject(&:empty?),
+        'hooks_installed' => data['hooks_installed'] == 'true',
+        'errors_count' => Integer(data.fetch('errors_count', '0'), exception: false) || 0
       }
     end
 

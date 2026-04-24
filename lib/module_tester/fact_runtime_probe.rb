@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fileutils'
+
 module ModuleTester
   module FactRuntimeProbe
     module_function
@@ -22,7 +24,13 @@ module ModuleTester
     end
 
     def output_path
-      ENV.fetch('PUPPET_FACT_RUNTIME_PROBE_OUTPUT', '').to_s.strip
+      legacy_output = ENV.fetch('PUPPET_FACT_RUNTIME_PROBE_OUTPUT', '').to_s.strip
+      return legacy_output unless legacy_output.empty?
+
+      dir = ENV.fetch('PUPPET_FACT_RUNTIME_PROBE_OUTPUT_DIR', '').to_s.strip
+      return '' if dir.empty?
+
+      File.join(dir, "probe-#{Process.pid}.kv")
     end
 
     def install_hooks_if_possible
@@ -110,6 +118,8 @@ module ModuleTester
       return unless enabled?
       return if output_path.empty?
 
+      FileUtils.mkdir_p(File.dirname(output_path))
+
       payload = {
         runtime_fact_api_used: state[:runtime_fact_api_used],
         call_count: state[:call_count],
@@ -120,6 +130,8 @@ module ModuleTester
       }
 
       lines = []
+      lines << "pid=#{Process.pid}"
+      lines << "ppid=#{Process.ppid}"
       lines << "runtime_fact_api_used=#{payload[:runtime_fact_api_used]}"
       lines << "call_count=#{payload[:call_count]}"
       lines << "providers_seen=#{Array(payload[:providers_seen]).join(',')}"
