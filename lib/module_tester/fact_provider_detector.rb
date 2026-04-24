@@ -37,14 +37,19 @@ module ModuleTester
 
     # Build the StageResult for the fact_provider stage and return it. Also
     # mutates the result hash to add an OpenFact warning when applicable.
-    def detect(stage_runner, module_dir, env, result)
+    #
+    # Options:
+    #   enforcement: nil | 'skipped' | 'attempted' | 'succeeded' | 'failed'
+    def detect(stage_runner, module_dir, env, result, enforcement: nil)
       lockfile_path = resolve_lockfile_path(module_dir, env)
       lock_info = parse_gemfile_lock(lockfile_path)
       probe_info = run_resolution_probe(stage_runner, module_dir, env)
+      why_info = run_bundle_why(stage_runner, module_dir, env, lock_info)
 
       provider, provider_gem = classify_provider(probe_info, lock_info)
 
-      summary = build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path)
+      summary = build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path,
+                              why_info: why_info, enforcement: enforcement)
 
       stage = StageResult.new(
         name: 'fact_provider',
@@ -55,7 +60,7 @@ module ModuleTester
         output: summary
       )
 
-      maybe_emit_openfact_warning(provider, lock_info, result)
+      maybe_emit_openfact_warning(provider, lock_info, result, enforcement: enforcement)
 
       stage
     end
@@ -140,6 +145,26 @@ module ModuleTester
       }
     end
 
+    # Run `bundle why <gem>` for openfact and openvox when they appear in the
+    # lockfile.  Returns a hash with :openfact and :openvox chains (or nil).
+    def run_bundle_why(stage_runner, module_dir, env, lock_info)
+      info = { openfact: nil, openvox: nil }
+      return info unless stage_runner.command_available?('bundle')
+
+      %i[openfact openvox].each do |gem_key|
+        next unless lock_info[gem_key]
+
+        stage = stage_runner.run_stage(
+          "bundle_why_#{gem_key}",
+          ['bundle', 'why', gem_key.to_s],
+          module_dir, env
+        )
+        info[gem_key] = stage.output.to_s.strip if stage.exit_code == 0
+      end
+
+      info
+    end
+
     def classify_provider(probe_info, lock_info)
       source = probe_info[:source].to_s
 
@@ -166,7 +191,8 @@ module ModuleTester
       m ? m[1] : ''
     end
 
-    def build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path)
+    def build_summary(provider, provider_gem, probe_info, lock_info, lockfile_path,
+                      why_info: {}, enforcement: nil)
       puppet_provider = if lock_info[:puppet] && lock_info[:openvox]
                           "puppet@#{lock_info[:puppet]}+openvox@#{lock_info[:openvox]}"
                         elsif lock_info[:puppet]
@@ -196,10 +222,20 @@ module ModuleTester
         "facter_runtime_version=#{probe_info[:version].to_s.empty? ? 'unknown' : probe_info[:version]}"
       ]
       parts << "load_error=#{probe_info[:load_error]}" if probe_info[:load_error]
+      parts << "enforcement=#{enforcement}" if enforcement
+      if why_info.is_a?(Hash)
+        parts << "pulled_by_openfact=#{why_info[:openfact]}" if why_info[:openfact]
+        parts << "pulled_by_openvox=#{why_info[:openvox]}" if why_info[:openvox]
+      end
       parts.join(' ')
     end
 
-    def maybe_emit_openfact_warning(provider, lock_info, result)
+    def maybe_emit_openfact_warning(provider, lock_info, result, enforcement: nil)
+      # If RUBYOPT enforcement succeeded the probe will report facter, not
+      # openfact, so neither condition below fires.  But as an extra guard:
+      # skip the warning entirely when enforcement explicitly succeeded.
+      return if enforcement == 'succeeded'
+
       openfact_active = provider == 'openfact'
       openfact_only_in_lock = !openfact_active && lock_info[:openfact] && !lock_info[:facter]
 

@@ -38,6 +38,8 @@ flowchart TD
         subgraph UnitPath["Unit Test Path"]
             UP{"PDK<br/>available?"}
             PDK["pdk validate<br/>pdk test unit"]
+            FE["Facter load-path enforcement<br/>RUBYOPT -I prepend<br/>(private source only)"]
+            FP["fact_provider detection<br/>bundle why · require probe"]
             Rake["bundle exec rake<br/>validate + spec / test"]
         end
 
@@ -78,7 +80,7 @@ flowchart TD
 
     TM -- unit --> UP
     UP -- yes --> PDK
-    UP -- no --> Rake
+    UP -- no --> FE --> FP --> Rake
     PDK & Rake --> CL
 
     TM -- acceptance --> AK
@@ -164,10 +166,22 @@ For rake-based unit runs the adapter inserts a deterministic `fact_provider` sta
 - `gemfile_facter` / `gemfile_openfact` — versions present in `Gemfile.lock` (or `absent`)
 - `detection_method` — `bundle_resolution`, `gemfile_lock_inference`, or `unknown`
 - `facter_runtime_version` — the `Facter::VERSION` constant value reported by the loaded gem
+- `enforcement` — `skipped`, `attempted`, `succeeded`, or `failed` (see Facter Load-Path Enforcement below)
+- `pulled_by_openfact` / `pulled_by_openvox` — output of `bundle why openfact` / `bundle why openvox` when those gems are present in the lockfile (dependency chain provenance)
 
 This approach does not depend on tests actually exercising the Facter API, does not depend on `RUBYOPT`/env-var inheritance across `system()`-spawned rspec children, and is not defeated by `rspec-puppet`'s `facter_implementation = 'rspec'` stub layer.
 
 If `fact_provider` resolves to **OpenFact** — or only the OpenFact gem is present in `Gemfile.lock` — the runner records `dependency_status = warning` with an explicit compatibility message. This indicates the unit run was not a definitive Perforce Puppet Core + Perforce Facter compatibility signal.
+
+#### Facter Load-Path Enforcement
+
+When `gem_source_mode` is `private` (Puppet Core profiles) and the resolved bundle contains **both** the `facter` and `openfact` gems, the adapter performs a best-effort enforcement step before the `fact_provider` detection stage:
+
+1. It locates the installed `facter` gem's `lib/` directory via `bundle show facter`.
+2. It prepends that path to the `RUBYOPT` environment variable (e.g. `RUBYOPT="-I/path/to/facter-4.17.0/lib"`).
+3. This causes `require 'facter'` to resolve to the Perforce Facter gem instead of OpenFact in all subsequent stages (`validate`, `fact_provider`, `unit`), including child processes spawned by `rake spec` via `system()`.
+
+The enforcement is **best-effort and non-failing**: if the facter gem path cannot be located, the pipeline continues without modification and the existing OpenFact warning fires as usual. The `enforcement` field in the `fact_provider` summary records the outcome.
 
 ### Acceptance Test Path
 

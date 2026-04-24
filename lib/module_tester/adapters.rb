@@ -53,7 +53,8 @@ module ModuleTester
       # This is deterministic: it inspects what `require 'facter'` resolves
       # to in the module's bundle plus parses Gemfile.lock. It does not
       # depend on tests actually calling the Facter API.
-      result[:stages] << FactProviderDetector.detect(@stage, module_dir, env, result)
+      enforcement = enforce_facter_load_path(module_dir, env, profile)
+      result[:stages] << FactProviderDetector.detect(@stage, module_dir, env, result, enforcement: enforcement)
 
       if tasks.include?('spec')
         unit_stage = @stage.run_stage('unit', ['bundle', 'exec', 'rake', 'spec'], module_dir, env)
@@ -203,6 +204,57 @@ module ModuleTester
         output,
         'Detected stale REFERENCE.md documentation drift; recorded as warning for compatibility classification.'
       ].join("\n")
+    end
+
+    # Best-effort enforcement: when the resolved bundle contains both facter
+    # and openfact gems, prepend the facter gem's lib/ directory to RUBYOPT
+    # so that `require 'facter'` resolves to the Perforce Facter gem instead
+    # of OpenFact. This is inherited by child processes spawned via
+    # `system()` (e.g. rspec via rake spec).
+    #
+    # Returns an enforcement status string:
+    #   'skipped'   — not applicable (no openfact in bundle, or not private source mode)
+    #   'attempted' — tried but could not locate facter gem path
+    #   'succeeded' — RUBYOPT prepended successfully
+    def enforce_facter_load_path(module_dir, env, profile)
+      return 'skipped' unless profile.fetch('gem_source_mode', '') == 'private'
+
+      lockfile_path = FactProviderDetector.resolve_lockfile_path(module_dir, env)
+      lock_info = FactProviderDetector.parse_gemfile_lock(lockfile_path)
+
+      return 'skipped' unless lock_info[:openfact] && lock_info[:facter]
+
+      facter_lib = find_facter_gem_lib(module_dir, env, lock_info[:facter])
+      return 'attempted' unless facter_lib && File.directory?(facter_lib)
+
+      existing_rubyopt = env.fetch('RUBYOPT', '').to_s
+      env['RUBYOPT'] = "-I#{facter_lib} #{existing_rubyopt}".strip
+
+      'succeeded'
+    end
+
+    # Locate the installed facter gem's lib/ directory within the bundle path.
+    def find_facter_gem_lib(module_dir, env, facter_version)
+      # Try `bundle show facter` first — most reliable.
+      if @stage.command_available?('bundle')
+        stage = @stage.run_stage(
+          'facter_gem_path',
+          ['bundle', 'show', 'facter'],
+          module_dir, env
+        )
+        if stage.exit_code == 0
+          gem_root = stage.output.to_s.strip.lines.last&.strip
+          if gem_root && !gem_root.empty?
+            lib_path = File.join(gem_root, 'lib')
+            return lib_path if File.directory?(lib_path)
+          end
+        end
+      end
+
+      # Fallback: scan the bundle path for the gem directory.
+      bundle_path = env.fetch('BUNDLE_PATH', File.join(module_dir, 'vendor', 'bundle')).to_s
+      pattern = File.join(bundle_path, '**', "facter-#{facter_version}", 'lib')
+      Dir.glob(pattern).first
     end
   end
 end
